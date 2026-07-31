@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>7. DrawSVG · 线条描边动画</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;
+    background:#0d1117;color:#e6edf3;font-family:system-ui,sans-serif}
+  .hint{opacity:.5;font-size:15px}
+  svg{width:min(420px,80vw);height:auto}
+  path,circle{fill:none;stroke-width:5;stroke-linecap:round;stroke-linejoin:round}
+  button{padding:12px 28px;border:0;border-radius:30px;background:#58e6a8;color:#0d1117;font-size:15px;font-weight:600;cursor:pointer}
+</style>
+</head>
+<body>
+<p class="hint">✍️ 线条像被「画」出来一样逐渐显现（DrawSVG 描边动画）</p>
+<svg viewBox="0 0 200 200">
+  <circle id="ring" cx="100" cy="100" r="80" stroke="#3b82f6"/>
+  <!-- 一个对勾 -->
+  <path id="check" d="M60,105 L90,135 L145,70" stroke="#58e6a8"/>
+</svg>
+<button onclick="play()">▶ 重新播放</button>
+
+<script src="../lib/gsap.min.js"></script>
+<script src="../lib/DrawSVGPlugin.min.js"></script>
+<script>
+  gsap.registerPlugin(DrawSVGPlugin);
+
+  function play(){
+    gsap.timeline()
+      .from("#ring",{ drawSVG:"0%", duration:1.2, ease:"power2.inOut" })   // 先画圆环
+      .from("#check",{ drawSVG:"0%", duration:0.6, ease:"power2.out" },"-=0.2"); // 再打对勾
+  }
+  play();
+</script>
+</body>
+</html>

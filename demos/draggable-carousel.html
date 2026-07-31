@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GSAP 可拖拽卡片轮播</title>
+<!-- GSAP 核心库 -->
+<script src="../lib/gsap.min.js"></script>
+<!-- Draggable 拖拽插件 -->
+<script src="../lib/Draggable.min.js"></script>
+<!-- InertiaPlugin 惯性插件（提供松手后的惯性滑动与吸附） -->
+<script src="../lib/InertiaPlugin.min.js"></script>
+<style>
+  /* 统一暗色主题变量 */
+  :root {
+    --bg: #0d1117;       /* 页面背景 */
+    --text: #e6edf3;     /* 主文字色 */
+    --accent: #58e6a8;   /* 强调色 */
+    --card: #161b22;     /* 卡片背景 */
+    --border: #30363d;   /* 边框色 */
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow-x: hidden;
+  }
+
+  h1 {
+    font-size: 24px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  h1 span { color: var(--accent); }
+
+  .hint {
+    color: #8b949e;
+    font-size: 14px;
+    margin-bottom: 40px;
+  }
+
+  /* 视口：限制可见宽度，超出部分隐藏 */
+  .viewport {
+    width: 100%;
+    max-width: 900px;
+    overflow: hidden;
+    padding: 40px 0;
+    /* 抓手光标提示可拖拽 */
+    cursor: grab;
+  }
+  .viewport:active { cursor: grabbing; }
+
+  /* 轨道：被 Draggable 拖动的容器，承载所有卡片 */
+  .track {
+    display: flex;
+    /* 第一张卡片留出左侧内边距，使其能居中对齐 */
+    padding-left: 300px;
+    will-change: transform;
+  }
+
+  /* 单张卡片 */
+  .card {
+    flex: 0 0 auto;
+    width: 240px;
+    height: 320px;
+    margin-right: 30px;        /* 卡片间距，与吸附步长保持一致 */
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    /* 默认略微缩小，给高亮放大留出对比空间 */
+    transform: scale(0.88);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    /* 拖拽时禁止选中文字 */
+    user-select: none;
+  }
+
+  /* 卡片顶部渐变色块 */
+  .card .thumb {
+    flex: 1;
+    background: linear-gradient(135deg, var(--c1), var(--c2));
+  }
+
+  .card .body {
+    padding: 16px 18px;
+  }
+  .card .body .idx {
+    font-size: 12px;
+    color: var(--accent);
+    letter-spacing: 1px;
+  }
+  .card .body .title {
+    font-size: 18px;
+    font-weight: 600;
+    margin-top: 4px;
+  }
+</style>
+</head>
+<body>
+  <h1>可拖拽<span>卡片轮播</span></h1>
+  <p class="hint">按住鼠标左右拖动 · 松手惯性滑动并自动吸附到卡片</p>
+
+  <div class="viewport">
+    <div class="track" id="track">
+      <div class="card" style="--c1:#58e6a8;--c2:#1f6f4f">
+        <div class="thumb"></div>
+        <div class="body"><div class="idx">CARD 01</div><div class="title">极光绿境</div></div>
+      </div>
+      <div class="card" style="--c1:#6ea8fe;--c2:#274b8f">
+        <div class="thumb"></div>
+        <div class="body"><div class="idx">CARD 02</div><div class="title">深海蓝调</div></div>
+      </div>
+      <div class="card" style="--c1:#e6a857;--c2:#8f5c27">
+        <div class="thumb"></div>
+        <div class="body"><div class="idx">CARD 03</div><div class="title">琥珀暖阳</div></div>
+      </div>
+      <div class="card" style="--c1:#c77dff;--c2:#5a2f8f">
+        <div class="thumb"></div>
+        <div class="body"><div class="idx">CARD 04</div><div class="title">紫罗兰雾</div></div>
+      </div>
+      <div class="card" style="--c1:#ff7d9d;--c2:#8f2742">
+        <div class="thumb"></div>
+        <div class="body"><div class="idx">CARD 05</div><div class="title">玫瑰晨曦</div></div>
+      </div>
+      <div class="card" style="--c1:#7de3ff;--c2:#27778f">
+        <div class="thumb"></div>
+        <div class="body"><div class="idx">CARD 06</div><div class="title">青空清流</div></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 注册插件（硬性要求）
+    gsap.registerPlugin(Draggable, InertiaPlugin);
+
+    const track = document.getElementById("track");
+    const cards = gsap.utils.toArray(".card");
+
+    // 计算单张卡片占据的步长 = 卡片宽度 + 右侧间距
+    // 用于 snap 吸附，使每次停留都对齐到一张卡片
+    const cardStyle = getComputedStyle(cards[0]);
+    const step = cards[0].offsetWidth + parseFloat(cardStyle.marginRight);
+
+    const total = cards.length;
+    // 拖拽范围：从 0（第一张）到 -(total-1)*step（最后一张）
+    const minX = -(total - 1) * step;
+    const maxX = 0;
+
+    // 根据轨道当前 x 位置，找到最居中的卡片并更新高亮放大效果
+    function updateActive() {
+      const x = gsap.getProperty(track, "x");
+      // 当前最接近的卡片索引
+      const activeIndex = Math.round(-x / step);
+      cards.forEach((card, i) => {
+        // 居中卡片放大并加强阴影，其余缩小
+        gsap.to(card, {
+          scale: i === activeIndex ? 1 : 0.88,
+          boxShadow: i === activeIndex
+            ? "0 12px 32px rgba(88,230,168,0.35)"
+            : "0 8px 24px rgba(0,0,0,0.4)",
+          duration: 0.4,
+          overwrite: "auto"
+        });
+      });
+    }
+
+    // 创建可拖拽实例
+    Draggable.create(track, {
+      type: "x",                          // 仅水平方向拖拽
+      inertia: true,                      // 启用惯性
+      bounds: { minX: minX, maxX: maxX }, // 限制拖拽边界
+      edgeResistance: 0.85,               // 触边阻力，防止拖出太远
+      // 惯性结束时吸附到最近的卡片步长上
+      snap: {
+        x: function (value) {
+          // 限制在边界内，再四舍五入到最近的 step 倍数
+          const clamped = Math.max(minX, Math.min(maxX, value));
+          return Math.round(clamped / step) * step;
+        }
+      },
+      // 拖拽过程中实时更新高亮
+      onDrag: updateActive,
+      // 惯性 + 吸附动画进行中持续更新高亮
+      onThrowUpdate: updateActive,
+      // 吸附结束时再校正一次，确保最终对齐
+      onThrowComplete: updateActive
+    });
+
+    // 初始化：默认高亮第一张
+    updateActive();
+
+    // 窗口尺寸变化时重新计算（保持简单，仅刷新高亮状态）
+    window.addEventListener("resize", updateActive);
+  </script>
+</body>
+</html>

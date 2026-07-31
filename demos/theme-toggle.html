@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>明暗主题切换过渡</title>
+<style>
+  /* 主题色用 CSS 变量驱动，GSAP 直接补间这些变量 */
+  :root {
+    --bg: #0d1117;        /* 背景色 */
+    --fg: #e6edf3;        /* 文字色 */
+    --card: #161b22;      /* 卡片背景 */
+    --accent: #58e6a8;    /* 强调色，保持不变 */
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 32px;
+    overflow: hidden;
+    /* 整页颜色过渡也加一层兜底，主驱动仍是 GSAP */
+    transition: none;
+  }
+
+  h1 {
+    font-size: clamp(28px, 6vw, 56px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  h1 .accent { color: var(--accent); }
+
+  p.sub {
+    font-size: 16px;
+    opacity: 0.7;
+    max-width: 480px;
+    text-align: center;
+    line-height: 1.6;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+    border-radius: 16px;
+    padding: 24px 28px;
+    max-width: 420px;
+    text-align: center;
+    font-size: 15px;
+    line-height: 1.7;
+  }
+  .card strong { color: var(--accent); }
+
+  /* 切换按钮 */
+  .toggle-btn {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    outline: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .toggle-btn:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+
+  .toggle-btn svg {
+    width: 30px;
+    height: 30px;
+    stroke: var(--accent);
+    fill: none;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    overflow: visible;
+  }
+
+  /* 圆形扩散遮罩：盖在整页之上，从点击点扩散 */
+  #ripple {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+    /* clip-path 圆从半径 0 扩散到全屏 */
+    clip-path: circle(0px at 50% 50%);
+  }
+</style>
+</head>
+<body>
+  <h1>明暗 <span class="accent">主题</span> 切换</h1>
+  <p class="sub">点击下方按钮，背景与文字颜色在暗色和亮色之间平滑过渡，图标做旋转切换，并从点击处扩散一个圆形遮罩。</p>
+
+  <button class="toggle-btn" id="toggle" aria-label="切换主题">
+    <!-- 太阳/月亮共用一个 SVG，通过形变与旋转切换 -->
+    <svg viewBox="0 0 24 24" id="icon">
+      <!-- 主体圆：太阳是实心轮廓，月亮通过遮罩裁出弯月 -->
+      <mask id="moon-mask">
+        <rect x="0" y="0" width="24" height="24" fill="white"/>
+        <!-- 这个偏移圆遮挡主圆右上，形成弯月；亮色时移出视野 -->
+        <circle id="mask-circle" cx="24" cy="10" r="6" fill="black"/>
+      </mask>
+      <circle id="core" cx="12" cy="12" r="6" mask="url(#moon-mask)"/>
+      <!-- 太阳光线，整体用 g 控制透明度/缩放 -->
+      <g id="rays" stroke="var(--accent)">
+        <line x1="12" y1="1"  x2="12" y2="3"/>
+        <line x1="12" y1="21" x2="12" y2="23"/>
+        <line x1="3.5" y1="3.5" x2="5"  y2="5"/>
+        <line x1="19" y1="19"  x2="20.5" y2="20.5"/>
+        <line x1="1"  y1="12"  x2="3"  y2="12"/>
+        <line x1="21" y1="12"  x2="23" y2="12"/>
+        <line x1="3.5" y1="20.5" x2="5" y2="19"/>
+        <line x1="19" y1="5"   x2="20.5" y2="3.5"/>
+      </g>
+    </svg>
+  </button>
+
+  <div class="card">
+    当前主题：<strong id="theme-name">暗色</strong><br>
+    强调色 <strong>#58e6a8</strong> 在两种主题下始终保持不变。
+  </div>
+
+  <!-- 圆形扩散遮罩 -->
+  <div id="ripple"></div>
+
+  <script src="../lib/gsap.min.js"></script>
+  <script>
+    // 两套主题色值
+    const themes = {
+      dark:  { bg: '#0d1117', fg: '#e6edf3', card: '#161b22' },
+      light: { bg: '#f5f5f7', fg: '#1d1d1f', card: '#ffffff' }
+    };
+
+    let isDark = true;                 // 当前是否为暗色
+    const root = document.documentElement;
+    const rays = document.getElementById('rays');
+    const maskCircle = document.getElementById('mask-circle');
+    const icon = document.getElementById('icon');
+    const ripple = document.getElementById('ripple');
+    const themeName = document.getElementById('theme-name');
+
+    // 初始状态：暗色 => 显示月亮（光线隐藏，遮罩圆裁出弯月）
+    gsap.set(rays, { opacity: 0, scale: 0.4, transformOrigin: '50% 50%' });
+    gsap.set(maskCircle, { attr: { cx: 18 } }); // 遮罩圆进入视野，形成弯月
+
+    // 计算从点击点到屏幕最远角的距离，作为扩散半径终值
+    function maxRadius(x, y) {
+      const dx = Math.max(x, window.innerWidth - x);
+      const dy = Math.max(y, window.innerHeight - y);
+      return Math.hypot(dx, dy);
+    }
+
+    function toggleTheme(e) {
+      isDark = !isDark;
+      const next = isDark ? themes.dark : themes.light;
+      themeName.textContent = isDark ? '暗色' : '亮色';
+
+      // 点击坐标（按钮中心兜底）
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = e.clientX || rect.left + rect.width / 2;
+      const y = e.clientY || rect.top + rect.height / 2;
+      const r = maxRadius(x, y);
+
+      // 圆形遮罩用「即将到来」的目标背景色，从点击点扩散开
+      ripple.style.background = next.bg;
+      gsap.fromTo(ripple,
+        { clipPath: `circle(0px at ${x}px ${y}px)` },
+        {
+          clipPath: `circle(${r}px at ${x}px ${y}px)`,
+          duration: 0.7,
+          ease: 'power2.inOut',
+          onComplete: () => {
+            // 扩散完成后收起遮罩，真正的页面色已经补间到位
+            gsap.set(ripple, { clipPath: `circle(0px at ${x}px ${y}px)` });
+          }
+        }
+      );
+
+      // CSS 变量颜色补间（页面真实颜色），与遮罩扩散同步进行
+      gsap.to(root, {
+        duration: 0.7,
+        ease: 'power2.inOut',
+        '--bg': next.bg,
+        '--fg': next.fg,
+        '--card': next.card
+      });
+
+      // 图标切换：旋转 + 太阳光线显隐 + 遮罩圆形变（弯月/满圆）
+      const tl = gsap.timeline();
+      tl.to(icon, {
+        rotation: '+=180',
+        duration: 0.7,
+        ease: 'back.inOut(1.4)',
+        transformOrigin: '50% 50%'
+      }, 0);
+
+      if (isDark) {
+        // 切到暗色 => 月亮：光线收起，遮罩圆进入裁出弯月
+        tl.to(rays, { opacity: 0, scale: 0.4, duration: 0.4, ease: 'power2.in' }, 0)
+          .to(maskCircle, { attr: { cx: 18 }, duration: 0.5, ease: 'power2.inOut' }, 0.15);
+      } else {
+        // 切到亮色 => 太阳：遮罩圆移出，核心变满圆，光线展开
+        tl.to(maskCircle, { attr: { cx: 30 }, duration: 0.4, ease: 'power2.inOut' }, 0)
+          .to(rays, { opacity: 1, scale: 1, duration: 0.45, ease: 'back.out(2)' }, 0.2);
+      }
+    }
+
+    document.getElementById('toggle').addEventListener('click', toggleTheme);
+  </script>
+</body>
+</html>

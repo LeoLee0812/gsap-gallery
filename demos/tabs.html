@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>标签页切换内容过渡</title>
+<style>
+  /* 暗色主题基础变量 */
+  :root {
+    --bg: #0d1117;
+    --text: #e6edf3;
+    --accent: #58e6a8;
+    --card: #161b22;
+    --border: #30363d;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  /* 整体容器 */
+  .wrap {
+    width: 100%;
+    max-width: 640px;
+  }
+
+  /* 标签栏，底部带相对定位用于承载滑动指示条 */
+  .tabs {
+    position: relative;
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .tab {
+    flex: 1;
+    background: none;
+    border: none;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 15px;
+    padding: 14px 8px;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.25s ease;
+    white-space: nowrap;
+  }
+
+  .tab:hover { opacity: 0.85; }
+  .tab.active { opacity: 1; color: var(--accent); }
+
+  /* 滑动高亮指示条，初始位置由 GSAP 设置 */
+  .indicator {
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    height: 2px;
+    background: var(--accent);
+    border-radius: 2px;
+    box-shadow: 0 0 10px var(--accent);
+  }
+
+  /* 内容区，固定最小高度避免切换时跳动 */
+  .panels {
+    position: relative;
+    margin-top: 24px;
+    min-height: 260px;
+  }
+
+  /* 卡片式内容面板，默认隐藏，由 JS 控制显示 */
+  .panel {
+    position: absolute;
+    inset: 0;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    display: none;
+  }
+
+  .panel.current { display: block; }
+
+  .panel h2 {
+    font-size: 20px;
+    margin-bottom: 12px;
+    color: var(--accent);
+  }
+
+  .panel p { line-height: 1.7; opacity: 0.9; }
+
+  /* 内部条目，用于 stagger 入场 */
+  .item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    margin-top: 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <!-- 标签栏 -->
+    <div class="tabs">
+      <button class="tab active" data-tab="0">概览</button>
+      <button class="tab" data-tab="1">数据</button>
+      <button class="tab" data-tab="2">团队</button>
+      <button class="tab" data-tab="3">设置</button>
+      <!-- 滑动高亮指示条 -->
+      <span class="indicator"></span>
+    </div>
+
+    <!-- 内容区 -->
+    <div class="panels">
+      <div class="panel current" data-panel="0">
+        <h2>项目概览</h2>
+        <p>这里展示项目的整体进度与关键里程碑，帮助你快速了解当前状态。</p>
+        <div class="item"><span class="dot"></span>当前迭代进度 78%</div>
+        <div class="item"><span class="dot"></span>本周新增提交 24 次</div>
+        <div class="item"><span class="dot"></span>待处理问题 5 个</div>
+      </div>
+
+      <div class="panel" data-panel="1">
+        <h2>数据分析</h2>
+        <p>实时统计访问量、转化率以及核心业务指标的变化趋势。</p>
+        <div class="item"><span class="dot"></span>今日访问量 12.4k</div>
+        <div class="item"><span class="dot"></span>转化率 3.6%</div>
+        <div class="item"><span class="dot"></span>平均停留时长 4m12s</div>
+      </div>
+
+      <div class="panel" data-panel="2">
+        <h2>团队成员</h2>
+        <p>查看团队成员的角色分工与近期活跃情况。</p>
+        <div class="item"><span class="dot"></span>产品经理 · 林夕</div>
+        <div class="item"><span class="dot"></span>前端工程师 · 阿哲</div>
+        <div class="item"><span class="dot"></span>设计师 · 小柚</div>
+      </div>
+
+      <div class="panel" data-panel="3">
+        <h2>偏好设置</h2>
+        <p>调整通知方式、主题外观以及账号安全相关的配置项。</p>
+        <div class="item"><span class="dot"></span>邮件通知 已开启</div>
+        <div class="item"><span class="dot"></span>暗色主题 已启用</div>
+        <div class="item"><span class="dot"></span>双重验证 待配置</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GSAP 核心 -->
+  <script src="../lib/gsap.min.js"></script>
+  <script>
+    const tabs = gsap.utils.toArray('.tab');
+    const panels = gsap.utils.toArray('.panel');
+    const indicator = document.querySelector('.indicator');
+
+    let activeIndex = 0;   // 当前激活的标签索引
+    let animating = false; // 切换动画进行中标志，防止重复触发
+
+    // 将指示条移动到指定标签下方（跟随其 x 与 width）
+    function moveIndicator(index, animate = true) {
+      const tab = tabs[index];
+      const props = { x: tab.offsetLeft, width: tab.offsetWidth };
+      if (animate) {
+        gsap.to(indicator, { ...props, duration: 0.4, ease: 'power3.out' });
+      } else {
+        gsap.set(indicator, props);
+      }
+    }
+
+    // 切换面板：旧内容淡出，新内容淡入上移，内部条目 stagger
+    function switchTo(index) {
+      if (index === activeIndex || animating) return;
+      animating = true;
+
+      const oldPanel = panels[activeIndex];
+      const newPanel = panels[index];
+
+      // 更新标签激活态
+      tabs[activeIndex].classList.remove('active');
+      tabs[index].classList.add('active');
+      moveIndicator(index);
+
+      const tl = gsap.timeline({
+        onComplete: () => { animating = false; }
+      });
+
+      // 旧面板淡出
+      tl.to(oldPanel, {
+        opacity: 0,
+        duration: 0.2,
+        ease: 'power1.in',
+        onComplete: () => oldPanel.classList.remove('current')
+      });
+
+      // 新面板登场
+      tl.add(() => newPanel.classList.add('current'));
+      tl.fromTo(newPanel,
+        { opacity: 0, y: 16 },
+        { opacity: 1, y: 0, duration: 0.4, ease: 'power3.out' }
+      );
+
+      // 内部元素 stagger 上移淡入
+      const inner = newPanel.querySelectorAll('h2, p, .item');
+      tl.fromTo(inner,
+        { opacity: 0, y: 14 },
+        { opacity: 1, y: 0, duration: 0.4, stagger: 0.07, ease: 'power2.out' },
+        '-=0.25'
+      );
+
+      activeIndex = index;
+    }
+
+    // 绑定点击事件
+    tabs.forEach((tab, i) => {
+      tab.addEventListener('click', () => switchTo(i));
+    });
+
+    // 初始化：指示条就位 + 首屏内部元素入场
+    window.addEventListener('load', () => {
+      moveIndicator(0, false);
+      const inner = panels[0].querySelectorAll('h2, p, .item');
+      gsap.fromTo(inner,
+        { opacity: 0, y: 14 },
+        { opacity: 1, y: 0, duration: 0.5, stagger: 0.08, ease: 'power2.out' }
+      );
+    });
+
+    // 窗口尺寸变化时重新校准指示条位置
+    window.addEventListener('resize', () => moveIndicator(activeIndex, false));
+  </script>
+</body>
+</html>

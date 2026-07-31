@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>模态框弹出动效</title>
+<style>
+  /* 暗色主题基础样式 */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #0d1117;
+    color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+  }
+
+  /* 打开模态框的触发按钮 */
+  .open-btn {
+    padding: 14px 28px;
+    font-size: 16px;
+    font-weight: 600;
+    color: #0d1117;
+    background: #58e6a8;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .open-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(88, 230, 168, .25);
+  }
+
+  /* 背景遮罩：初始隐藏，由 GSAP 控制可见性 */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, .6);
+    visibility: hidden;
+    opacity: 0;
+  }
+
+  /* 对话框卡片 */
+  .dialog {
+    width: min(90vw, 440px);
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 14px;
+    padding: 28px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, .5);
+  }
+  .dialog h2 { font-size: 22px; margin-bottom: 12px; }
+  .dialog p { color: #aab4c0; line-height: 1.6; margin-bottom: 20px; }
+
+  /* 对话框底部按钮组 */
+  .dialog-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+  }
+  .btn {
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 1px solid #30363d;
+    background: transparent;
+    color: #e6edf3;
+  }
+  .btn-primary {
+    background: #58e6a8;
+    border-color: #58e6a8;
+    color: #0d1117;
+  }
+
+  /* 右上角关闭按钮 */
+  .close-btn {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid #30363d;
+    background: transparent;
+    color: #e6edf3;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .dialog { position: relative; }
+</style>
+</head>
+<body>
+  <button class="open-btn" id="openBtn">打开模态框</button>
+
+  <!-- 遮罩 + 对话框结构 -->
+  <div class="overlay" id="overlay">
+    <div class="dialog" id="dialog">
+      <button class="close-btn" id="closeBtn" aria-label="关闭">&times;</button>
+      <!-- data-stagger 标记的元素将依次出现 -->
+      <h2 data-stagger>确认操作</h2>
+      <p data-stagger>这是一个使用 GSAP 时间轴驱动的模态框。背景遮罩淡入，对话框带弹性放大入场，内部元素依次出现。</p>
+      <div class="dialog-actions" data-stagger>
+        <button class="btn" id="cancelBtn">取消</button>
+        <button class="btn btn-primary">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../lib/gsap.min.js"></script>
+  <script>
+    const overlay = document.getElementById('overlay');
+    const dialog = document.getElementById('dialog');
+    const items = dialog.querySelectorAll('[data-stagger]'); // 需要 stagger 的内部元素
+
+    // 构建一条暂停的入场时间轴，后续用 play / reverse 控制开关
+    const tl = gsap.timeline({ paused: true });
+
+    tl
+      // 遮罩淡入（autoAlpha 同时处理 opacity 与 visibility）
+      .to(overlay, { autoAlpha: 1, duration: 0.3, ease: 'power2.out' })
+      // 对话框从略小 + 下方位置弹性放大入场
+      .fromTo(dialog,
+        { scale: 0.8, y: 40, autoAlpha: 0 },
+        { scale: 1, y: 0, autoAlpha: 1, duration: 0.6, ease: 'back.out(1.7)' },
+        '-=0.15'
+      )
+      // 内部元素依次淡入上移
+      .fromTo(items,
+        { y: 16, autoAlpha: 0 },
+        { y: 0, autoAlpha: 1, duration: 0.4, stagger: 0.1, ease: 'power2.out' },
+        '-=0.3'
+      );
+
+    // 打开：从头正向播放
+    function openModal() {
+      tl.timeScale(1).play(0);
+    }
+
+    // 关闭：反向播放并加速，结束后确保遮罩隐藏
+    function closeModal() {
+      tl.timeScale(1.6).reverse();
+    }
+
+    document.getElementById('openBtn').addEventListener('click', openModal);
+    document.getElementById('closeBtn').addEventListener('click', closeModal);
+    document.getElementById('cancelBtn').addEventListener('click', closeModal);
+
+    // 点击遮罩空白处关闭（点到对话框内部不触发）
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) closeModal();
+    });
+
+    // 按 Esc 关闭
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeModal();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>段落逐行遮罩揭示</title>
+<style>
+  /* 暗色主题基础样式 */
+  :root {
+    --bg: #0d1117;
+    --text: #e6edf3;
+    --accent: #58e6a8;
+    --card: #161b22;
+    --border: #30363d;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 56px 48px;
+    max-width: 680px;
+    width: 100%;
+  }
+  .paragraph {
+    font-size: clamp(20px, 3.5vw, 30px);
+    font-weight: 600;
+    line-height: 1.5;
+    letter-spacing: 0.2px;
+  }
+  /* 高亮强调色 */
+  .paragraph b { color: var(--accent); font-weight: 700; }
+
+  /* SplitText 拆出的每一行：作为遮罩容器，溢出隐藏 */
+  .paragraph .mask {
+    overflow: hidden;
+    display: block;
+  }
+  /* 行内真实文字，受 mask 裁切，从下方升起 */
+  .paragraph .line {
+    display: block;
+    will-change: transform;
+  }
+
+  .replay {
+    margin-top: 40px;
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 22px;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+  }
+  .replay:hover {
+    background: rgba(88, 230, 168, 0.1);
+    border-color: var(--accent);
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <p class="paragraph" id="para">设计的本质不是装饰，而是<b>沟通</b>。每一行文字都应当在恰当的时机出现，引导视线自然地向下流动。当节奏与内容契合，<b>信息便不再是负担</b>，而成为一种愉悦的体验。</p>
+    <button class="replay" id="replay">↻ 重播</button>
+  </div>
+
+  <script src="../lib/gsap.min.js"></script>
+  <script src="../lib/SplitText.min.js"></script>
+  <script>
+    // 注册 SplitText 插件
+    gsap.registerPlugin(SplitText);
+
+    const para = document.getElementById("para");
+    let split;       // SplitText 实例
+    let tween;       // 当前动画
+
+    // 构建并播放逐行揭示动画
+    function play() {
+      // 若已存在，先回收旧的拆分与动画，避免重复包裹
+      if (tween) tween.kill();
+      if (split) split.revert();
+
+      // 按行拆分，每行元素加 .line 类作为升起的文字本体
+      split = new SplitText(para, { type: "lines", linesClass: "line" });
+
+      // 给每一行外面包一个 .mask 遮罩容器（overflow:hidden），
+      // 这样行文字升起时会被遮罩边缘裁切，形成“从遮罩里升起”的效果
+      split.lines.forEach(line => {
+        const mask = document.createElement("div");
+        mask.className = "mask";
+        line.parentNode.insertBefore(mask, line);
+        mask.appendChild(line);
+      });
+
+      // 行文字从遮罩下方升起，逐行 stagger 入场
+      tween = gsap.from(split.lines, {
+        yPercent: 100,
+        duration: 0.9,
+        ease: "power3.out",
+        stagger: 0.12
+      });
+    }
+
+    // 字体加载完成后再执行，避免拆行测量错位
+    document.fonts.ready.then(play);
+
+    // 重播按钮
+    document.getElementById("replay").addEventListener("click", play);
+  </script>
+</body>
+</html>

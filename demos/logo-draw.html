@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SVG Logo 描边绘制 + 填色</title>
+<style>
+  /* 暗色主题基础样式 */
+  :root {
+    --bg: #0d1117;
+    --text: #e6edf3;
+    --accent: #58e6a8;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 40px;
+  }
+  /* logo 容器 */
+  .logo-wrap {
+    width: 360px;
+    height: 360px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+  /* 描边路径：初始无填充，靠 stroke 勾勒轮廓 */
+  .stroke-path {
+    fill: var(--accent);
+    fill-opacity: 0;          /* 填色初始透明，后续淡入 */
+    stroke: var(--accent);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  /* 重播按钮 */
+  .replay-btn {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 10px 28px;
+    border-radius: 24px;
+    font-family: inherit;
+    font-size: 15px;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: background 0.25s, color 0.25s;
+  }
+  .replay-btn:hover {
+    background: var(--accent);
+    color: var(--bg);
+  }
+</style>
+</head>
+<body>
+  <div class="logo-wrap">
+    <!-- 几何 logo：六边形外框 + 内部字母 G（GSAP 风格开场） -->
+    <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+      <!-- 外层六边形轮廓 -->
+      <path class="stroke-path" d="M100 18 L171 59 L171 141 L100 182 L29 141 L29 59 Z"/>
+      <!-- 内部字母 G 描边 -->
+      <path class="stroke-path" d="M128 78 A38 38 0 1 0 128 122 L128 104 L104 104"/>
+    </svg>
+  </div>
+
+  <button class="replay-btn" id="replay">重播动画</button>
+
+  <!-- 加载 GSAP 核心与 DrawSVG 插件 -->
+  <script src="../lib/gsap.min.js"></script>
+  <script src="../lib/DrawSVGPlugin.min.js"></script>
+  <script>
+    // 注册 DrawSVG 插件
+    gsap.registerPlugin(DrawSVGPlugin);
+
+    const paths = document.querySelectorAll('.stroke-path');
+    const logoWrap = document.querySelector('.logo-wrap');
+
+    // 构建动画时间线
+    function buildTimeline() {
+      const tl = gsap.timeline();
+
+      // 1. 描边：每条路径 drawSVG 从 0% 到 100%，逐笔画出
+      tl.fromTo(paths,
+        { drawSVG: '0%' },
+        {
+          drawSVG: '100%',
+          duration: 1.4,
+          ease: 'power1.inOut',
+          stagger: 0.4          // 路径之间错开，形成"逐笔"感
+        }
+      );
+
+      // 2. 填色：fill-opacity 从 0 淡入到 1
+      tl.to(paths,
+        {
+          fillOpacity: 1,
+          duration: 0.6,
+          ease: 'power1.out'
+        },
+        '+=0.1'                 // 描边完成后略作停顿再填色
+      );
+
+      // 3. 整体轻微缩放定格：先放大再回落
+      tl.to(logoWrap,
+        {
+          scale: 1.08,
+          duration: 0.35,
+          ease: 'power2.out'
+        }
+      ).to(logoWrap,
+        {
+          scale: 1,
+          duration: 0.5,
+          ease: 'elastic.out(1, 0.5)'
+        }
+      );
+
+      return tl;
+    }
+
+    let timeline = buildTimeline();
+
+    // 重播：重置状态后重新播放
+    document.getElementById('replay').addEventListener('click', () => {
+      timeline.kill();
+      gsap.set(paths, { fillOpacity: 0 });
+      gsap.set(logoWrap, { scale: 1 });
+      timeline = buildTimeline();
+    });
+  </script>
+</body>
+</html>

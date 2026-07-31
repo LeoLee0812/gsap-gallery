@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GSAP 物理撒花 Confetti</title>
+<!-- GSAP 核心库 -->
+<script src="../lib/gsap.min.js"></script>
+<!-- Physics2D 物理插件：提供 velocity / angle / gravity 抛射模拟 -->
+<script src="../lib/Physics2DPlugin.min.js"></script>
+<style>
+  /* 暗色主题统一配色 */
+  :root {
+    --bg: #0d1117;
+    --fg: #e6edf3;
+    --accent: #58e6a8;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    overflow: hidden; /* 纸屑飞出视口时不产生滚动条 */
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: system-ui, -apple-system, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 28px;
+    position: relative;
+  }
+
+  h1 {
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: 1px;
+  }
+
+  p.hint {
+    font-size: 14px;
+    opacity: 0.6;
+  }
+
+  /* 庆祝按钮 */
+  #celebrate {
+    padding: 16px 36px;
+    font-size: 18px;
+    font-weight: 600;
+    font-family: inherit;
+    color: var(--bg);
+    background: var(--accent);
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+    box-shadow: 0 8px 24px rgba(88, 230, 168, 0.3);
+    transition: transform 0.12s ease, box-shadow 0.2s ease;
+  }
+  #celebrate:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px rgba(88, 230, 168, 0.45);
+  }
+  #celebrate:active {
+    transform: translateY(1px) scale(0.97);
+  }
+
+  /* 单片纸屑：绝对定位，脱离文档流，便于自由飞行 */
+  .confetti {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    pointer-events: none;
+    will-change: transform, opacity; /* 提示浏览器开启合成层加速 */
+    z-index: 9999;
+  }
+</style>
+</head>
+<body>
+  <h1>🎉 庆祝时刻</h1>
+  <button id="celebrate">🎉 庆祝一下</button>
+  <p class="hint">点击按钮，喷出物理抛射的彩色纸屑</p>
+
+  <script>
+    // 注册 Physics2D 插件（硬性要求）
+    gsap.registerPlugin(Physics2DPlugin);
+
+    // 鲜艳的纸屑配色池
+    const COLORS = [
+      '#58e6a8', '#ff6b6b', '#ffd93d', '#4dabf7',
+      '#ff8cc6', '#a78bfa', '#ff9f43', '#34d399'
+    ];
+
+    // 工具函数：返回 [min, max) 区间的随机数
+    function rand(min, max) {
+      return min + Math.random() * (max - min);
+    }
+
+    const btn = document.getElementById('celebrate');
+
+    // 触发一次撒花
+    function burst() {
+      // 喷射点：屏幕水平居中、垂直偏下（中下方）
+      const originX = window.innerWidth / 2;
+      const originY = window.innerHeight * 0.78;
+
+      // 一次喷出几十片纸屑
+      const count = 60;
+
+      for (let i = 0; i < count; i++) {
+        // 动态生成纸屑 div
+        const piece = document.createElement('div');
+        piece.className = 'confetti';
+        piece.style.backgroundColor = COLORS[Math.floor(Math.random() * COLORS.length)];
+
+        // 随机尺寸与形状（部分为细长条纸带）
+        const w = rand(6, 14);
+        const h = rand(8, 18);
+        piece.style.width = w + 'px';
+        piece.style.height = h + 'px';
+
+        document.body.appendChild(piece);
+
+        // 初始定位到喷射点
+        gsap.set(piece, { x: originX, y: originY });
+
+        // 用 Physics2D 做真实抛射：
+        // angle 朝上方扇形扩散（向上为约 -90°，左右展开）
+        // velocity 初速度随机，gravity 重力把纸屑拉回，形成抛物线
+        gsap.to(piece, {
+          duration: rand(2, 3.5),
+          physics2D: {
+            velocity: rand(350, 750),   // 初速度（像素/秒）
+            angle: rand(-160, -20),     // 喷射角度，向上扇形展开
+            gravity: 900                // 重力加速度，制造抛物线下落
+          },
+          rotation: rand(-720, 720),    // 飞行中持续旋转
+          ease: 'none',
+          onComplete: () => piece.remove() // 动画结束移除，避免 DOM 堆积
+        });
+
+        // 渐隐：稍作延迟后淡出，配合下落自然消失
+        gsap.to(piece, {
+          opacity: 0,
+          duration: rand(0.8, 1.4),
+          delay: rand(1.2, 2),
+          ease: 'power1.in'
+        });
+      }
+    }
+
+    btn.addEventListener('click', burst);
+  </script>
+</body>
+</html>

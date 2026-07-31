@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>星级评分微交互</title>
+<!-- GSAP 核心库 -->
+<script src="../lib/gsap.min.js"></script>
+<style>
+  /* 暗色主题基础样式 */
+  :root {
+    --bg: #0d1117;
+    --text: #e6edf3;
+    --accent: #58e6a8;
+    --card: #161b22;
+    --border: #30363d;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* 评分卡片容器 */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 48px 56px;
+    text-align: center;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  }
+  .card h1 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 28px;
+    color: var(--text);
+  }
+  /* 星星行 */
+  .stars {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-bottom: 24px;
+  }
+  /* 单颗星：用 SVG 描边，填充色由 GSAP 控制 */
+  .star {
+    cursor: pointer;
+    width: 44px;
+    height: 44px;
+    display: inline-block;
+    /* transform-origin 居中保证缩放与弹跳从中心发散 */
+    transform-origin: center center;
+  }
+  .star svg { width: 100%; height: 100%; display: block; overflow: visible; }
+  .star path {
+    /* 默认未点亮：暗色填充 + 边框描边 */
+    fill: #2a313c;
+    stroke: var(--border);
+    stroke-width: 1.5;
+  }
+  /* 评价文字 */
+  .label {
+    font-size: 15px;
+    color: var(--accent);
+    min-height: 22px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>给这次体验打个分吧</h1>
+    <div class="stars" id="stars"></div>
+    <div class="label" id="label">移动到星星上预览评分</div>
+  </div>
+
+  <script>
+    // 五星对应的评价文案
+    const RATING_TEXTS = ['很差', '一般', '还行', '满意', '非常满意'];
+    const STAR_COUNT = 5;
+    // 颜色常量
+    const COLOR_OFF = '#2a313c';   // 未点亮填充
+    const COLOR_ON = '#58e6a8';    // 点亮/选中填充
+    const COLOR_BORDER_OFF = '#30363d';
+    const COLOR_BORDER_ON = '#58e6a8';
+
+    const starsEl = document.getElementById('stars');
+    const labelEl = document.getElementById('label');
+
+    // 五角星 SVG 路径数据
+    const STAR_PATH = 'M22 3 L27.5 15.5 L41 16.8 L31 26 L34 39.5 L22 32.5 L10 39.5 L13 26 L3 16.8 L16.5 15.5 Z';
+
+    // 存放每个 star 的 DOM 与其内部 path
+    const stars = [];
+    let currentRating = 0; // 已选定的评分，0 表示未选
+
+    // 动态创建 5 颗星
+    for (let i = 0; i < STAR_COUNT; i++) {
+      const star = document.createElement('div');
+      star.className = 'star';
+      star.innerHTML = `<svg viewBox="0 0 44 44"><path d="${STAR_PATH}"/></svg>`;
+      starsEl.appendChild(star);
+      stars.push({ el: star, path: star.querySelector('path') });
+    }
+
+    // 点亮从 0 到 index（含）的星：颜色填充 + 从左到右 stagger 弹跳放大
+    function lightUp(index, isSelect) {
+      stars.forEach((s, i) => {
+        if (i <= index) {
+          // 填充强调色
+          gsap.to(s.path, { fill: COLOR_ON, stroke: COLOR_BORDER_ON, duration: 0.25 });
+        } else {
+          // 超出范围的星恢复未点亮态
+          gsap.to(s.path, { fill: COLOR_OFF, stroke: COLOR_BORDER_OFF, duration: 0.25 });
+        }
+      });
+      // 对点亮范围内的星做 stagger 弹跳放大，制造从左到右依次亮起的先后感
+      gsap.to(
+        stars.slice(0, index + 1).map(s => s.el),
+        {
+          scale: isSelect ? 1 : 1.18,
+          duration: 0.4,
+          ease: 'back.out(3)',
+          stagger: 0.06,
+        }
+      );
+      // 未点亮的星缩放复位
+      gsap.to(stars.slice(index + 1).map(s => s.el), { scale: 1, duration: 0.3, ease: 'power2.out' });
+    }
+
+    // 鼠标悬停某颗星：预览点亮
+    stars.forEach((s, i) => {
+      s.el.addEventListener('mouseenter', () => {
+        lightUp(i, false);
+        labelEl.textContent = `${i + 1} 星 · ${RATING_TEXTS[i]}`;
+      });
+
+      // 点击选定评分
+      s.el.addEventListener('click', () => {
+        currentRating = i + 1;
+        // 先把整行点亮并复位缩放
+        lightUp(i, true);
+        labelEl.textContent = `${currentRating} 星 · ${RATING_TEXTS[i]}`;
+
+        // 选中的那颗星做庆祝弹跳：elastic 回弹更有庆祝感
+        gsap.fromTo(
+          s.el,
+          { scale: 1 },
+          { scale: 1.45, duration: 0.7, ease: 'elastic.out(1, 0.35)' }
+        );
+        // 让选中星稍微回到 1，避免一直停在放大态（elastic 已自然收尾，这里仅做兜底）
+        gsap.to(s.el, { scale: 1, duration: 0.4, delay: 0.7, ease: 'power2.out' });
+      });
+    });
+
+    // 鼠标离开整行：回到已选定的评分状态（若未选则全部熄灭）
+    starsEl.addEventListener('mouseleave', () => {
+      if (currentRating > 0) {
+        lightUp(currentRating - 1, true);
+        labelEl.textContent = `${currentRating} 星 · ${RATING_TEXTS[currentRating - 1]}`;
+      } else {
+        // 未选定：全部熄灭并复位
+        stars.forEach(s => {
+          gsap.to(s.path, { fill: COLOR_OFF, stroke: COLOR_BORDER_OFF, duration: 0.3 });
+          gsap.to(s.el, { scale: 1, duration: 0.3, ease: 'power2.out' });
+        });
+        labelEl.textContent = '移动到星星上预览评分';
+      }
+    });
+  </script>
+</body>
+</html>

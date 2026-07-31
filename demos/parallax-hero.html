@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>鼠标视差英雄区</title>
+<style>
+  /* 基础重置与暗色主题 */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: #0d1117;
+    color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+  }
+
+  /* 全屏 Hero 容器，作为鼠标监听区域 */
+  .hero {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* 通用层定位：所有层居中堆叠 */
+  .layer {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    will-change: transform;
+  }
+
+  /* 背景光斑层（最远，移动幅度最小） */
+  .blobs { width: 100%; height: 100%; }
+  .blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.55;
+  }
+  .blob.b1 { width: 480px; height: 480px; background: #58e6a8; top: 12%; left: 14%; }
+  .blob.b2 { width: 560px; height: 560px; background: #3b82f6; bottom: 8%; right: 12%; }
+  .blob.b3 { width: 360px; height: 360px; background: #a855f7; top: 38%; left: 46%; opacity: 0.4; }
+
+  /* 中景标题层（中等移动幅度） */
+  .title-wrap { text-align: center; }
+  .title {
+    font-size: clamp(48px, 9vw, 140px);
+    font-weight: 800;
+    letter-spacing: -2px;
+    line-height: 1.05;
+    background: linear-gradient(135deg, #e6edf3, #58e6a8);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .subtitle {
+    margin-top: 18px;
+    font-size: clamp(14px, 1.8vw, 22px);
+    color: #8b949e;
+    letter-spacing: 1px;
+  }
+
+  /* 前景色块层（最近，移动幅度最大） */
+  .cards { width: 100%; height: 100%; pointer-events: none; }
+  .card {
+    position: absolute;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 16px;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+  }
+  .card.c1 { width: 180px; height: 120px; top: 18%; left: 10%; }
+  .card.c2 { width: 140px; height: 140px; bottom: 16%; left: 16%; }
+  .card.c3 { width: 200px; height: 130px; top: 22%; right: 12%; }
+  .card.c4 { width: 150px; height: 150px; bottom: 14%; right: 18%; }
+  /* 色块上的强调小条 */
+  .card::before {
+    content: "";
+    position: absolute;
+    top: 16px; left: 16px;
+    width: 40px; height: 6px;
+    border-radius: 3px;
+    background: #58e6a8;
+  }
+
+  .hint {
+    position: absolute;
+    bottom: 28px;
+    width: 100%;
+    text-align: center;
+    color: #8b949e;
+    font-size: 13px;
+    letter-spacing: 1px;
+    z-index: 10;
+  }
+</style>
+</head>
+<body>
+  <div class="hero" id="hero">
+    <!-- 背景光斑层 -->
+    <div class="layer blobs" data-depth="0.02">
+      <div class="blob b1"></div>
+      <div class="blob b2"></div>
+      <div class="blob b3"></div>
+    </div>
+
+    <!-- 中景标题层 -->
+    <div class="layer title-wrap" data-depth="0.06">
+      <h1 class="title">视差景深</h1>
+      <p class="subtitle">移动鼠标，感受多层 3D 跟随</p>
+    </div>
+
+    <!-- 前景色块层 -->
+    <div class="layer cards" data-depth="0.14">
+      <div class="card c1"></div>
+      <div class="card c2"></div>
+      <div class="card c3"></div>
+      <div class="card c4"></div>
+    </div>
+
+    <div class="hint">MOVE YOUR MOUSE</div>
+  </div>
+
+  <!-- 只加载 GSAP 核心 -->
+  <script src="../lib/gsap.min.js"></script>
+  <script>
+    const hero = document.getElementById("hero");
+    const layers = gsap.utils.toArray(".layer");
+
+    // 为每一层生成独立的 quickTo 平滑跟随函数（x 和 y 各一个）
+    // duration 与 ease 决定跟随的“黏滞”手感，深度系数控制偏移幅度
+    const movers = layers.map((el) => {
+      const depth = parseFloat(el.dataset.depth); // 不同层不同幅度系数
+      return {
+        el,
+        depth,
+        xTo: gsap.quickTo(el, "x", { duration: 0.8, ease: "power3.out" }),
+        yTo: gsap.quickTo(el, "y", { duration: 0.8, ease: "power3.out" }),
+      };
+    });
+
+    // 监听鼠标移动，计算相对屏幕中心的偏移量
+    hero.addEventListener("mousemove", (e) => {
+      const cx = window.innerWidth / 2;
+      const cy = window.innerHeight / 2;
+      // 鼠标相对中心的偏移（正负表示方向）
+      const dx = e.clientX - cx;
+      const dy = e.clientY - cy;
+
+      // 反向偏移：层向鼠标相反方向移动，幅度由 depth 决定，产生景深错位
+      movers.forEach(({ xTo, yTo, depth }) => {
+        xTo(-dx * depth);
+        yTo(-dy * depth);
+      });
+    });
+
+    // 鼠标离开时各层平滑归位到中心
+    hero.addEventListener("mouseleave", () => {
+      movers.forEach(({ xTo, yTo }) => {
+        xTo(0);
+        yTo(0);
+      });
+    });
+  </script>
+</body>
+</html>

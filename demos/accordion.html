@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GSAP 手风琴 FAQ</title>
+<style>
+  /* 暗色主题基础样式 */
+  :root {
+    --bg: #0d1117;
+    --text: #e6edf3;
+    --accent: #58e6a8;
+    --card: #161b22;
+    --border: #30363d;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+  }
+  h1 {
+    font-size: 28px;
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+  .subtitle {
+    color: #8b949e;
+    font-size: 14px;
+    margin-bottom: 32px;
+  }
+  .accordion {
+    width: 100%;
+    max-width: 640px;
+  }
+  /* 单个问题项卡片 */
+  .item {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 12px;
+    overflow: hidden;
+    transition: border-color 0.3s ease;
+  }
+  .item.active {
+    border-color: var(--accent);
+  }
+  /* 问题标题行（可点击） */
+  .question {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px;
+    cursor: pointer;
+    user-select: none;
+    font-size: 16px;
+    font-weight: 500;
+  }
+  .question:hover { color: var(--accent); }
+  /* +/- 图标，用伪元素绘制两条线，旋转构成加号变减号 */
+  .icon {
+    position: relative;
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    margin-left: 16px;
+  }
+  /* 横线（伪元素，固定不动） */
+  .icon::before {
+    content: "";
+    position: absolute;
+    background: var(--accent);
+    border-radius: 2px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 16px;
+    height: 2px;
+  }
+  /* 竖线（真实元素，旋转这一根即可在 + 和 - 间切换） */
+  .icon .bar {
+    position: absolute;
+    background: var(--accent);
+    border-radius: 2px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 2px;
+    height: 16px;
+  }
+  /* 答案容器，初始高度为 0 */
+  .answer {
+    height: 0;
+    overflow: hidden;
+  }
+  .answer-inner {
+    padding: 0 24px 22px;
+    color: #b1bac4;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+</style>
+</head>
+<body>
+  <h1>常见问题</h1>
+  <p class="subtitle">点击任意问题查看答案 · 手风琴模式</p>
+
+  <div class="accordion" id="accordion">
+    <div class="item">
+      <div class="question">什么是 GSAP？<span class="icon"><span class="bar"></span></span></div>
+      <div class="answer"><div class="answer-inner">GSAP（GreenSock Animation Platform）是一个高性能的 JavaScript 动画库，能够精确地为任意 DOM 属性、CSS、SVG、Canvas 等创建流畅动画，被广泛用于网页交互与动效设计。</div></div>
+    </div>
+    <div class="item">
+      <div class="question">高度从 0 到 auto 怎么平滑过渡？<span class="icon"><span class="bar"></span></span></div>
+      <div class="answer"><div class="answer-inner">CSS 无法直接对 auto 高度做过渡。本示例先让 GSAP 把目标高度设为 "auto" 测量真实高度，再回退到具体像素值进行补间，从而实现平滑展开与收起。</div></div>
+    </div>
+    <div class="item">
+      <div class="question">手风琴模式是什么意思？<span class="icon"><span class="bar"></span></span></div>
+      <div class="answer"><div class="answer-inner">手风琴模式指同一时间只允许一个面板处于展开状态。当你点击展开某个问题时，其他已展开的问题会自动收起，保持界面整洁有序。</div></div>
+    </div>
+    <div class="item">
+      <div class="question">图标旋转是如何实现的？<span class="icon"><span class="bar"></span></span></div>
+      <div class="answer"><div class="answer-inner">加号图标的竖线在展开时通过 GSAP 旋转 90 度，与横线重合后视觉上变为减号；收起时再旋转回 0 度，配合缓动函数让切换自然顺滑。</div></div>
+    </div>
+    <div class="item">
+      <div class="question">动画卡顿了怎么办？<span class="icon"><span class="bar"></span></span></div>
+      <div class="answer"><div class="answer-inner">建议优先动画 transform 与 opacity 等合成属性，避免频繁触发重排。GSAP 内置了高效的渲染调度，通常能稳定保持 60fps 的流畅表现。</div></div>
+    </div>
+  </div>
+
+  <!-- GSAP 核心库 -->
+  <script src="../lib/gsap.min.js"></script>
+  <script>
+    const items = document.querySelectorAll(".item");
+    let activeItem = null; // 记录当前展开的项，用于手风琴模式
+
+    // 展开指定项
+    function openItem(item) {
+      const answer = item.querySelector(".answer");
+      item.classList.add("active");
+
+      // 先测量目标高度：临时设为 auto 量出真实高度，再从 0 补间到该值
+      gsap.set(answer, { height: "auto" });
+      const targetHeight = answer.offsetHeight;
+      gsap.fromTo(
+        answer,
+        { height: 0 },
+        { height: targetHeight, duration: 0.4, ease: "power2.out",
+          // 动画结束后设回 auto，保证内容自适应（如窗口缩放）
+          onComplete: () => gsap.set(answer, { height: "auto" }) }
+      );
+
+      // 竖线旋转 90 度，+ 变 -
+      rotateIcon(item, 90);
+
+      activeItem = item;
+    }
+
+    // 收起指定项
+    function closeItem(item) {
+      const answer = item.querySelector(".answer");
+      item.classList.remove("active");
+
+      // 先固定当前像素高度，再补间到 0，避免从 auto 直接跳变
+      gsap.set(answer, { height: answer.offsetHeight });
+      gsap.to(answer, { height: 0, duration: 0.4, ease: "power2.in" });
+
+      // 竖线转回 0 度，- 变 +
+      rotateIcon(item, 0);
+
+      if (activeItem === item) activeItem = null;
+    }
+
+    // 旋转图标竖线：90 度时与横线重合，+ 变 -
+    function rotateIcon(item, deg) {
+      const bar = item.querySelector(".icon .bar");
+      gsap.to(bar, { rotation: deg, duration: 0.4, ease: "power2.out" });
+    }
+
+    // 绑定点击事件
+    items.forEach((item) => {
+      const question = item.querySelector(".question");
+      question.addEventListener("click", () => {
+        const isActive = item.classList.contains("active");
+        // 手风琴模式：展开新项前先收起当前项
+        if (activeItem && activeItem !== item) closeItem(activeItem);
+        if (isActive) {
+          closeItem(item);
+        } else {
+          openItem(item);
+        }
+      });
+    });
+  </script>
+</body>
+</html>

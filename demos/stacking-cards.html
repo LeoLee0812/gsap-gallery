@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>堆叠卡片滚动 · Stacking Cards</title>
+<style>
+  /* 暗色主题变量 */
+  :root {
+    --bg: #0d1117;
+    --text: #e6edf3;
+    --accent: #58e6a8;
+    --card: #161b22;
+    --border: #30363d;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* 顶部引导区 */
+  .intro {
+    height: 70vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 16px;
+    padding: 0 24px;
+  }
+  .intro h1 {
+    font-size: clamp(32px, 6vw, 64px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .intro h1 span { color: var(--accent); }
+  .intro p {
+    color: #8b949e;
+    font-size: clamp(14px, 2vw, 18px);
+    max-width: 480px;
+    line-height: 1.6;
+  }
+  .scroll-hint {
+    margin-top: 24px;
+    color: var(--accent);
+    font-size: 13px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    animation: bounce 1.8s ease-in-out infinite;
+  }
+  @keyframes bounce {
+    0%, 100% { transform: translateY(0); opacity: 0.7; }
+    50% { transform: translateY(8px); opacity: 1; }
+  }
+
+  /* 卡片堆叠区：每张卡占一段滚动距离 */
+  .cards {
+    position: relative;
+    /* 让最后留出尾部空间 */
+    padding-bottom: 10vh;
+  }
+
+  /* 单张卡片的滚动段落，内部卡片会被 pin 钉住 */
+  .card-wrap {
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .card {
+    width: min(82vw, 920px);
+    height: min(64vh, 520px);
+    border-radius: 24px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    padding: clamp(28px, 5vw, 56px);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+    /* 变换原点设为顶部中心，缩小后视觉上向后退 */
+    transform-origin: center top;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* 卡片左上角的序号 */
+  .card .num {
+    font-size: clamp(48px, 9vw, 96px);
+    font-weight: 800;
+    line-height: 1;
+    color: var(--accent);
+    opacity: 0.9;
+  }
+  .card .body h2 {
+    font-size: clamp(24px, 4vw, 40px);
+    font-weight: 700;
+    margin-bottom: 12px;
+    letter-spacing: -0.01em;
+  }
+  .card .body p {
+    color: #8b949e;
+    font-size: clamp(14px, 2vw, 18px);
+    line-height: 1.7;
+    max-width: 560px;
+  }
+  .card .tag {
+    align-self: flex-start;
+    margin-top: 8px;
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 13px;
+    color: var(--accent);
+  }
+  /* 背景装饰光晕 */
+  .card::after {
+    content: "";
+    position: absolute;
+    right: -80px;
+    bottom: -80px;
+    width: 260px;
+    height: 260px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(88,230,168,0.18), transparent 70%);
+    pointer-events: none;
+  }
+
+  /* 结尾区 */
+  .outro {
+    height: 60vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #8b949e;
+    font-size: 15px;
+    letter-spacing: 0.05em;
+  }
+</style>
+</head>
+<body>
+
+  <section class="intro">
+    <h1>堆叠卡片 <span>Stacking Cards</span></h1>
+    <p>向下滚动，卡片会依次被钉住并层层叠放。后一张滑上来时，前一张轻微缩小后移，形成纵深叠放的视觉效果。</p>
+    <div class="scroll-hint">↓ 向下滚动</div>
+  </section>
+
+  <main class="cards">
+    <div class="card-wrap">
+      <article class="card">
+        <div class="num">01</div>
+        <div class="body">
+          <h2>滚动钉住</h2>
+          <p>每张卡片进入视口中央后被 ScrollTrigger 钉住，停留在屏幕上，等待下一张卡片滑入并压住它。</p>
+        </div>
+        <span class="tag">ScrollTrigger · pin</span>
+      </article>
+    </div>
+
+    <div class="card-wrap">
+      <article class="card">
+        <div class="num">02</div>
+        <div class="body">
+          <h2>纵深叠放</h2>
+          <p>被压住的卡片会同步缩小并向上后移，露出顶部一条边，模拟卡片在三维空间中向后退去的层叠感。</p>
+        </div>
+        <span class="tag">scale · translateY</span>
+      </article>
+    </div>
+
+    <div class="card-wrap">
+      <article class="card">
+        <div class="num">03</div>
+        <div class="body">
+          <h2>平滑跟随</h2>
+          <p>动画通过 scrub 与滚动进度精确绑定，缩放和位移随滚轮实时插值，向上向下都顺滑可逆。</p>
+        </div>
+        <span class="tag">scrub</span>
+      </article>
+    </div>
+
+    <div class="card-wrap">
+      <article class="card">
+        <div class="num">04</div>
+        <div class="body">
+          <h2>层层堆积</h2>
+          <p>多张卡片依次叠加，越靠后的卡片被压缩得越多，最终在屏幕中央形成一摞整齐的卡片堆。</p>
+        </div>
+        <span class="tag">stacking</span>
+      </article>
+    </div>
+
+    <div class="card-wrap">
+      <article class="card">
+        <div class="num">05</div>
+        <div class="body">
+          <h2>收尾出场</h2>
+          <p>最后一张卡片是这摞堆叠的封面，它不再被压住，作为整组动效的终点稳稳停在最上方。</p>
+        </div>
+        <span class="tag">final</span>
+      </article>
+    </div>
+  </main>
+
+  <section class="outro">— 动效结束 · 可向上滚动回看 —</section>
+
+  <!-- GSAP 核心库与 ScrollTrigger 插件 -->
+  <script src="../lib/gsap.min.js"></script>
+  <script src="../lib/ScrollTrigger.min.js"></script>
+  <script>
+    // 注册滚动触发插件
+    gsap.registerPlugin(ScrollTrigger);
+
+    const cards = gsap.utils.toArray(".card");
+    const total = cards.length;
+
+    cards.forEach((card, i) => {
+      const wrap = card.parentElement;
+
+      // 1) 把每张卡片钉住：从卡片居中开始，到最后一张卡片完成堆叠为止
+      ScrollTrigger.create({
+        trigger: wrap,
+        start: "center center",
+        // 钉住时长 = 剩余卡片数量 × 一屏高度，让后续卡片逐一滑上来压住它
+        endTrigger: cards[total - 1].parentElement,
+        end: "center center",
+        pin: true,
+        pinSpacing: false, // 不额外撑开空间，卡片真正叠在同一位置
+      });
+
+      // 最后一张卡片是堆叠顶层，不需要被压缩
+      if (i === total - 1) return;
+
+      // 2) 当后面的卡片滑上来时，当前卡片缩小并向上后移
+      // 触发区间：从当前卡片居中，到下一张卡片居中
+      gsap.to(card, {
+        scale: 0.92 - (total - 1 - i) * 0.0, // 基础缩放，逐级缩小由叠加实现
+        ease: "none",
+        scrollTrigger: {
+          trigger: cards[i + 1].parentElement,
+          start: "center bottom", // 下一张卡片刚进入视口底部时开始
+          end: "center center",   // 下一张卡片居中时压缩完成
+          scrub: true,
+        },
+      });
+
+      // 3) 同步向上位移，露出顶部一条边形成层叠堆积
+      gsap.to(card, {
+        y: -18 * (total - i), // 越早的卡片向上退得越多
+        ease: "none",
+        scrollTrigger: {
+          trigger: cards[i + 1].parentElement,
+          start: "center bottom",
+          end: "center center",
+          scrub: true,
+        },
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GSAP Flip 相册 · 共享元素布局过渡</title>
+<style>
+  /* ===== 暗色主题统一变量 ===== */
+  :root {
+    --bg: #0d1117;        /* 背景 */
+    --text: #e6edf3;      /* 文字 */
+    --accent: #58e6a8;    /* 强调色 */
+    --card: #161b22;      /* 卡片 */
+    --border: #30363d;    /* 边框 */
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    padding: 40px 24px;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 32px;
+  }
+  header h1 {
+    font-size: 24px;
+    font-weight: 600;
+  }
+  header p {
+    margin-top: 8px;
+    font-size: 14px;
+    color: #8b949e;
+  }
+  header .accent { color: var(--accent); }
+
+  /* ===== 缩略图网格 ===== */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    max-width: 760px;
+    margin: 0 auto;
+  }
+
+  /* 单张图片卡片：默认在网格中显示 */
+  .item {
+    position: relative;
+    aspect-ratio: 4 / 3;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    cursor: pointer;
+    /* gradient 由内联 style 指定 */
+  }
+  .item:hover {
+    border-color: var(--accent);
+  }
+
+  /* 标题文字：网格态下半透明显示在底部，详情态放大 */
+  .item .title {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    padding: 10px 12px;
+    background: linear-gradient(to top, rgba(13,17,23,0.85), transparent);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .item .desc {
+    /* 描述文字默认隐藏，只有详情态出现 */
+    display: none;
+    margin-top: 6px;
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 1.5;
+    color: #c9d1d9;
+  }
+
+  /* ===== 详情（放大）态 =====
+     被点击的卡片加上 .expanded，脱离网格定位到屏幕中央。
+     Flip 插件负责把"从网格位置"到"这个大尺寸位置"之间补出平滑过渡动画。 */
+  .item.expanded {
+    position: fixed;
+    inset: 0;
+    margin: auto;
+    width: min(90vw, 720px);
+    height: min(80vh, 540px);
+    aspect-ratio: auto;
+    z-index: 100;
+    border-color: var(--accent);
+    box-shadow: 0 30px 80px rgba(0,0,0,0.6);
+  }
+  .item.expanded .title {
+    padding: 28px 32px;
+    font-size: 26px;
+  }
+  .item.expanded .desc {
+    display: block;
+  }
+
+  /* 详情态背后的遮罩层 */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(13,17,23,0.7);
+    backdrop-filter: blur(4px);
+    z-index: 90;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .overlay.show {
+    pointer-events: auto;
+  }
+
+  footer {
+    text-align: center;
+    margin-top: 40px;
+    font-size: 13px;
+    color: #8b949e;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Flip 相册</h1>
+  <p>点击任意色块平滑放大为详情卡片，再点一下平滑收回 ——
+     基于 <span class="accent">GSAP Flip</span> 的共享元素布局过渡</p>
+</header>
+
+<!-- 详情态遮罩，点击它也可关闭 -->
+<div class="overlay" id="overlay"></div>
+
+<div class="grid" id="grid"></div>
+
+<footer>提示：放大后点击卡片或遮罩任意处即可收回</footer>
+
+<!-- GSAP 核心 + Flip 插件 -->
+<script src="../lib/gsap.min.js"></script>
+<script src="../lib/Flip.min.js"></script>
+<script>
+  // 注册 Flip 插件（硬性要求）
+  gsap.registerPlugin(Flip);
+
+  // ===== 数据：用 CSS 渐变当"图片"，配上标题与描述 =====
+  const photos = [
+    { title: "极光夜行",   desc: "高纬度天空中流动的绿色光带，是太阳风与磁场的对话。", grad: "linear-gradient(135deg, #1f6feb, #58e6a8)" },
+    { title: "黄昏海岸",   desc: "潮水退去，沙滩映出橙紫交织的最后一束日光。",       grad: "linear-gradient(135deg, #f78166, #db61a2)" },
+    { title: "深林晨雾",   desc: "针叶林间薄雾未散，光线被切成一道道斜柱。",         grad: "linear-gradient(135deg, #2ea043, #1f6feb)" },
+    { title: "霓虹街区",   desc: "雨后柏油路反射着招牌的紫与青，城市仍未入眠。",     grad: "linear-gradient(135deg, #a371f7, #58e6a8)" },
+    { title: "沙丘正午",   desc: "无边的金色起伏，风一遍遍重写沙脊的线条。",         grad: "linear-gradient(135deg, #f0883e, #f78166)" },
+    { title: "冰川裂隙",   desc: "千年冰层深处，蓝得近乎透明的幽光自下涌出。",       grad: "linear-gradient(135deg, #58e6a8, #1f6feb)" },
+    { title: "星轨长曝",   desc: "镜头守候一夜，群星绕着北极点划出同心圆。",         grad: "linear-gradient(135deg, #6e40c9, #db61a2)" },
+    { title: "梯田秋色",   desc: "层层叠叠的稻浪由青转金，铺满整座山坡。",           grad: "linear-gradient(135deg, #d29922, #2ea043)" },
+    { title: "盐湖镜面",   desc: "薄薄一层水把天空完整倒映，分不清上下。",           grad: "linear-gradient(135deg, #79c0ff, #a371f7)" },
+  ];
+
+  // ===== 动态生成缩略图网格 =====
+  const grid = document.getElementById("grid");
+  const overlay = document.getElementById("overlay");
+  photos.forEach((p) => {
+    const item = document.createElement("div");
+    item.className = "item";
+    item.style.background = p.grad;
+    item.innerHTML = `
+      <div class="title">${p.title}
+        <div class="desc">${p.desc}</div>
+      </div>`;
+    grid.appendChild(item);
+  });
+
+  const items = Array.from(grid.querySelectorAll(".item"));
+  let expandedItem = null; // 当前处于放大态的卡片，null 表示无
+
+  // ===== 核心：用 Flip 完成网格态 <-> 详情态的布局过渡 =====
+  function toggle(item) {
+    // 1) Flip.getState：在改 DOM/class 之前，记录所有受影响元素的当前几何状态
+    const state = Flip.getState(items);
+
+    if (item === expandedItem) {
+      // 当前已放大 -> 收回网格
+      item.classList.remove("expanded");
+      expandedItem = null;
+      // 遮罩淡出
+      gsap.to(overlay, { opacity: 0, duration: 0.4, onComplete: () => overlay.classList.remove("show") });
+    } else {
+      // 若已有其它卡片放大，先把它收回（同一次过渡中处理）
+      if (expandedItem) expandedItem.classList.remove("expanded");
+      // 2) 改 class，让目标卡片进入 .expanded（脱离网格、定位到屏幕中央）
+      item.classList.add("expanded");
+      expandedItem = item;
+      // 遮罩淡入
+      overlay.classList.add("show");
+      gsap.to(overlay, { opacity: 1, duration: 0.4 });
+    }
+
+    // 3) Flip.from：根据记录的旧状态，把元素从旧位置平滑过渡到新位置
+    Flip.from(state, {
+      duration: 0.6,
+      ease: "power2.inOut",
+      absolute: true,      // 过渡期间用绝对定位，避免影响其它元素布局
+      scale: true,         // 用 scale 变换缩放尺寸，过渡更顺滑
+    });
+  }
+
+  // 绑定点击：点缩略图放大，点放大卡片收回
+  items.forEach((item) => item.addEventListener("click", () => toggle(item)));
+  // 点遮罩也收回
+  overlay.addEventListener("click", () => { if (expandedItem) toggle(expandedItem); });
+</script>
+</body>
+</html>

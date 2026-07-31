@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>翻页时钟 Flip Clock</title>
+<style>
+  /* 全局暗色主题 */
+  :root {
+    --bg: #0d1117;
+    --text: #e6edf3;
+    --accent: #58e6a8;
+    --card: #161b22;
+    --border: #30363d;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 32px;
+    user-select: none;
+  }
+  h1 {
+    font-weight: 600;
+    font-size: 18px;
+    letter-spacing: 2px;
+    color: var(--accent);
+    opacity: 0.85;
+  }
+
+  /* 时钟容器，开启 3D 透视让翻页有立体感 */
+  .clock {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    perspective: 1200px;
+  }
+  /* 一组（时/分/秒），由两位翻页牌组成 */
+  .group {
+    display: flex;
+    gap: 8px;
+  }
+  /* 时:分:秒之间的冒号分隔符 */
+  .sep {
+    font-size: 56px;
+    font-weight: 700;
+    color: var(--accent);
+    align-self: center;
+    animation: blink 1s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.25; } }
+
+  /* 单个翻页牌，整体保留 3D 上下文 */
+  .flip {
+    position: relative;
+    width: 84px;
+    height: 120px;
+    font-size: 88px;
+    font-weight: 700;
+    line-height: 120px;
+    text-align: center;
+    transform-style: preserve-3d;
+  }
+  /* 上下两个半片的公共样式 */
+  .flip .half {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 50%;
+    overflow: hidden;
+    background: var(--card);
+    border: 1px solid var(--border);
+  }
+  /* 上半片：显示数字上半部分 */
+  .flip .top {
+    top: 0;
+    border-bottom: none;
+    border-radius: 10px 10px 0 0;
+    line-height: 120px;            /* 数字顶端对齐整牌 */
+    transform-origin: bottom;
+  }
+  /* 下半片：显示数字下半部分 */
+  .flip .bottom {
+    bottom: 0;
+    border-top: none;
+    border-radius: 0 0 10px 10px;
+    line-height: 0;                /* 把数字下半部分顶上来露出 */
+    transform-origin: top;
+  }
+  /* 中间分割线，模拟两片之间的缝隙 */
+  .flip::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 100%;
+    height: 2px;
+    background: rgba(0,0,0,0.45);
+    transform: translateY(-1px);
+    z-index: 6;
+  }
+  /* 翻转片：盖在上半片之上，绕中轴翻下 */
+  .flip .fold-top {
+    z-index: 5;
+    border-radius: 10px 10px 0 0;
+    backface-visibility: hidden;
+  }
+  /* 翻转片：盖在下半片之上，从竖直翻平 */
+  .flip .fold-bottom {
+    z-index: 5;
+    border-radius: 0 0 10px 10px;
+    backface-visibility: hidden;
+  }
+
+  .hint {
+    font-size: 13px;
+    color: var(--text);
+    opacity: 0.4;
+  }
+</style>
+</head>
+<body>
+  <h1>FLIP CLOCK</h1>
+  <div class="clock" id="clock">
+    <div class="group" data-unit="h"></div>
+    <div class="sep">:</div>
+    <div class="group" data-unit="m"></div>
+    <div class="sep">:</div>
+    <div class="group" data-unit="s"></div>
+  </div>
+  <div class="hint">基于 GSAP rotationX 的机械翻页牌效果</div>
+
+  <script src="../lib/gsap.min.js"></script>
+  <script>
+    /* 每个翻页牌由四层构成：
+       - top    静态上半片（显示当前数字上半）
+       - bottom 静态下半片（显示当前数字下半）
+       - fold-top    翻转片上半，翻动上半时绕底边向下转
+       - fold-bottom 翻转片下半，翻动下半时绕顶边向上立起再落平
+       通过两段 rotationX 动画串联，实现经典 split-flap 翻页 */
+
+    // 创建一个翻页牌 DOM，并返回对其各层的引用
+    function createFlip() {
+      const flip = document.createElement("div");
+      flip.className = "flip";
+      flip.innerHTML = `
+        <div class="half top">0</div>
+        <div class="half bottom">0</div>
+        <div class="half top fold-top">0</div>
+        <div class="half bottom fold-bottom">0</div>
+      `;
+      return {
+        el: flip,
+        top: flip.querySelector(".top:not(.fold-top)"),
+        bottom: flip.querySelector(".bottom:not(.fold-bottom)"),
+        foldTop: flip.querySelector(".fold-top"),
+        foldBottom: flip.querySelector(".fold-bottom"),
+        current: "0",
+      };
+    }
+
+    // 初始化所有翻页牌：时/分/秒各两位，共六位
+    const flips = [];
+    document.querySelectorAll(".group").forEach((group) => {
+      for (let i = 0; i < 2; i++) {
+        const f = createFlip();
+        group.appendChild(f.el);
+        // 翻转下半片初始立起（藏在上方），由动画落平
+        gsap.set(f.foldBottom, { rotationX: 180 });
+        flips.push(f);
+      }
+    });
+
+    // 执行单个翻页牌从旧值翻到新值的动画
+    function flipTo(f, newVal) {
+      if (f.current === newVal) return;
+      const oldVal = f.current;
+      f.current = newVal;
+
+      // 上半翻转片显示旧值（翻下时露出旧上半）
+      f.foldTop.textContent = oldVal;
+      // 下半翻转片显示新值（立起时背面其实是新值的下半）
+      f.foldBottom.textContent = newVal;
+      // 静态上半片立即切到新值（被翻转片盖住，不会穿帮）
+      f.top.textContent = newVal;
+      // 静态下半片保持旧值，等翻转片落平后再换
+
+      gsap.set(f.foldTop, { rotationX: 0 });
+      gsap.set(f.foldBottom, { rotationX: 180 });
+
+      const tl = gsap.timeline();
+      // 第一段：上半翻转片绕底边向下翻 90 度（盖住下半旧值前半程）
+      tl.to(f.foldTop, {
+        rotationX: -90,
+        duration: 0.3,
+        ease: "power2.in",
+      });
+      // 第二段：下半翻转片从立起的 180 落回 0（露出新值下半）
+      tl.to(f.foldBottom, {
+        rotationX: 0,
+        duration: 0.3,
+        ease: "power2.out",
+        onStart: () => {
+          // 翻转片越过中线后，把静态下半片换成新值
+          f.bottom.textContent = newVal;
+        },
+      });
+    }
+
+    // 把两位数字拆成个位、十位填入对应翻页牌
+    function update() {
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, "0");
+      const str = pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds());
+      for (let i = 0; i < flips.length; i++) {
+        flipTo(flips[i], str[i]);
+      }
+    }
+
+    // 首帧立即同步当前时间（无动画）
+    (function initNow() {
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, "0");
+      const str = pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds());
+      flips.forEach((f, i) => {
+        f.current = str[i];
+        f.top.textContent = str[i];
+        f.bottom.textContent = str[i];
+      });
+    })();
+
+    // 用 GSAP delayedCall 每秒驱动一次更新，保持节拍稳定
+    function tick() {
+      update();
+      gsap.delayedCall(1, tick);
+    }
+    // 对齐到下一个整秒再启动，避免半秒抖动
+    gsap.delayedCall(1 - (Date.now() % 1000) / 1000, tick);
+  </script>
+</body>
+</html>

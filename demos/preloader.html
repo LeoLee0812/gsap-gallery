@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GSAP 预加载开场动画</title>
+<style>
+  /* 暗色主题基础变量 */
+  :root {
+    --bg: #0d1117;
+    --text: #e6edf3;
+    --accent: #58e6a8;
+    --card: #161b22;
+    --border: #30363d;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* 预加载遮罩层：覆盖全屏，加载完成后上滑退出 */
+  .preloader {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 28px;
+  }
+
+  /* 计数数字 0→100% */
+  .counter {
+    font-size: clamp(56px, 12vw, 120px);
+    font-weight: 700;
+    letter-spacing: -2px;
+    font-variant-numeric: tabular-nums;
+  }
+  .counter .pct { color: var(--accent); }
+
+  /* 进度条轨道与填充 */
+  .progress-track {
+    width: min(60vw, 420px);
+    height: 4px;
+    background: var(--border);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    border-radius: 999px;
+  }
+
+  .loading-label {
+    font-size: 13px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #8b949e;
+  }
+
+  /* 主内容区 */
+  main {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 80px 24px;
+  }
+
+  .hero h1 {
+    font-size: clamp(32px, 6vw, 56px);
+    line-height: 1.1;
+    margin-bottom: 16px;
+  }
+  .hero h1 span { color: var(--accent); }
+
+  .hero p {
+    font-size: 18px;
+    color: #8b949e;
+    max-width: 560px;
+    margin-bottom: 40px;
+  }
+
+  /* 卡片网格 */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 18px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+  }
+  .card h3 {
+    color: var(--accent);
+    margin-bottom: 10px;
+    font-size: 18px;
+  }
+  .card p { color: #8b949e; font-size: 14px; line-height: 1.6; }
+
+  /* 重播按钮 */
+  .replay {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    z-index: 50;
+    background: var(--card);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 12px 22px;
+    font: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    transition: border-color .2s, color .2s;
+  }
+  .replay:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* 入场前隐藏，避免闪现（JS 接管动画） */
+  .anim-target { opacity: 0; }
+</style>
+</head>
+<body>
+
+  <!-- 预加载遮罩 -->
+  <div class="preloader" id="preloader">
+    <div class="counter"><span id="num">0</span><span class="pct">%</span></div>
+    <div class="progress-track"><div class="progress-fill" id="fill"></div></div>
+    <div class="loading-label">Loading</div>
+  </div>
+
+  <!-- 主内容 -->
+  <main>
+    <section class="hero">
+      <h1 class="anim-target">流畅的 <span>开场体验</span><br>从这里开始</h1>
+      <p class="anim-target">页面加载时先呈现进度反馈，完成后遮罩优雅上滑，主内容依次错落入场。</p>
+    </section>
+    <div class="grid">
+      <div class="card anim-target"><h3>计数动画</h3><p>数字从 0 平滑递增到 100%，营造真实加载感。</p></div>
+      <div class="card anim-target"><h3>进度条</h3><p>填充宽度与计数同步推进，视觉双重反馈。</p></div>
+      <div class="card anim-target"><h3>遮罩退出</h3><p>通过 yPercent 让遮罩整体向上滑出视口。</p></div>
+      <div class="card anim-target"><h3>错落入场</h3><p>stagger 让标题与卡片逐个登场，富有节奏。</p></div>
+    </div>
+  </main>
+
+  <!-- 重播按钮 -->
+  <button class="replay" id="replay">↻ 重播</button>
+
+  <!-- GSAP 核心库 -->
+  <script src="../lib/gsap.min.js"></script>
+  <script>
+    // 加载进度对象，counter 与 fill 共享该数值实现同步
+    const loadState = { value: 0 };
+    const numEl = document.getElementById('num');
+    const fillEl = document.getElementById('fill');
+
+    // 构建完整开场时间线
+    function buildIntro() {
+      // 重置到初始状态，供重播使用
+      gsap.set('#preloader', { yPercent: 0, autoAlpha: 1 });
+      gsap.set('.anim-target', { autoAlpha: 0, y: 40 });
+      loadState.value = 0;
+      numEl.textContent = '0';
+      fillEl.style.width = '0%';
+
+      const tl = gsap.timeline();
+
+      // 1. 计数 0→100，同时驱动进度条宽度
+      tl.to(loadState, {
+        value: 100,
+        duration: 2,
+        ease: 'power1.inOut',
+        onUpdate: () => {
+          const v = Math.round(loadState.value);
+          numEl.textContent = v;
+          fillEl.style.width = v + '%';
+        }
+      });
+
+      // 2. 加载完成后短暂停顿，再让遮罩向上滑出
+      tl.to('#preloader', {
+        yPercent: -100,
+        duration: 0.9,
+        ease: 'power3.inOut'
+      }, '+=0.2');
+
+      // 3. 主内容 stagger 错落入场（与遮罩退出尾段重叠）
+      tl.to('.anim-target', {
+        autoAlpha: 1,
+        y: 0,
+        duration: 0.7,
+        ease: 'power2.out',
+        stagger: 0.12
+      }, '-=0.4');
+
+      return tl;
+    }
+
+    // 首次播放
+    buildIntro();
+
+    // 重播按钮
+    document.getElementById('replay').addEventListener('click', buildIntro);
+  </script>
+</body>
+</html>

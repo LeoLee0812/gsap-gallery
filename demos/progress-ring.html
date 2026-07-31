@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>圆形进度环 · GSAP DrawSVG</title>
+<style>
+  /* 暗色主题基础样式 */
+  :root {
+    --bg: #0d1117;
+    --text: #e6edf3;
+    --accent: #58e6a8;
+    --card: #161b22;
+    --border: #30363d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 48px;
+    padding: 48px 24px;
+  }
+  h1 {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+  /* 卡片容器：横向排列三个进度环 */
+  .rings {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 32px;
+    justify-content: center;
+  }
+  .ring-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    width: 200px;
+  }
+  .ring-wrap {
+    position: relative;
+    width: 140px;
+    height: 140px;
+  }
+  .ring-wrap svg {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg); /* 让进度从顶部 12 点方向开始 */
+  }
+  /* 中心数字：绝对定位覆盖在环中央 */
+  .ring-value {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+  .ring-value::after {
+    content: "%";
+    font-size: 16px;
+    margin-left: 2px;
+    align-self: flex-start;
+    margin-top: 6px;
+    opacity: 0.7;
+  }
+  .ring-label {
+    font-size: 14px;
+    color: var(--text);
+    opacity: 0.75;
+  }
+  /* 重播按钮 */
+  .replay-btn {
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    border-radius: 10px;
+    padding: 12px 28px;
+    font-size: 15px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: transform 0.15s ease, opacity 0.15s ease;
+  }
+  .replay-btn:hover { opacity: 0.88; transform: translateY(-2px); }
+  .replay-btn:active { transform: translateY(0); }
+</style>
+</head>
+<body>
+  <h1>圆形进度环</h1>
+
+  <div class="rings" id="rings"></div>
+
+  <button class="replay-btn" id="replay">重新播放</button>
+
+  <!-- GSAP 核心库与 DrawSVG 插件 -->
+  <script src="../lib/gsap.min.js"></script>
+  <script src="../lib/DrawSVGPlugin.min.js"></script>
+  <script>
+    gsap.registerPlugin(DrawSVGPlugin);
+
+    // 三个进度环的配置：标签 + 目标百分比
+    const data = [
+      { label: "完成度", percent: 75 },
+      { label: "存储占用", percent: 40 },
+      { label: "满意度", percent: 90 },
+    ];
+
+    const R = 54; // 圆环半径
+
+    // 动态生成每个进度环的 DOM 结构
+    const container = document.getElementById("rings");
+    data.forEach((item, i) => {
+      const card = document.createElement("div");
+      card.className = "ring-card";
+      card.innerHTML = `
+        <div class="ring-wrap">
+          <svg viewBox="0 0 120 120">
+            <!-- 底层轨道圆环 -->
+            <circle cx="60" cy="60" r="${R}" fill="none"
+                    stroke="#30363d" stroke-width="10" />
+            <!-- 进度圆环：由 DrawSVG 控制绘制比例 -->
+            <circle class="progress" cx="60" cy="60" r="${R}" fill="none"
+                    stroke="#58e6a8" stroke-width="10" stroke-linecap="round" />
+          </svg>
+          <div class="ring-value" data-i="${i}">0</div>
+        </div>
+        <div class="ring-label">${item.label}</div>
+      `;
+      container.appendChild(card);
+    });
+
+    const progressCircles = document.querySelectorAll(".progress");
+    const valueEls = document.querySelectorAll(".ring-value");
+
+    // 播放全部进度环动画
+    function play() {
+      data.forEach((item, i) => {
+        const circle = progressCircles[i];
+        const valueEl = valueEls[i];
+        // 用一个计数对象同步驱动中心数字
+        const counter = { val: 0 };
+
+        // 环形绘制：从 0% 画到目标百分比
+        gsap.fromTo(circle,
+          { drawSVG: "0%" },
+          {
+            drawSVG: item.percent + "%",
+            duration: 1.6,
+            ease: "power2.out",
+            delay: i * 0.15, // 三个环依次错开启动
+          }
+        );
+
+        // 中心数字：从 0 递增到目标值，onUpdate 同步刷新文本
+        gsap.to(counter, {
+          val: item.percent,
+          duration: 1.6,
+          ease: "power2.out",
+          delay: i * 0.15,
+          onUpdate: () => {
+            valueEl.textContent = Math.round(counter.val);
+          },
+        });
+      });
+    }
+
+    play();
+    document.getElementById("replay").addEventListener("click", play);
+  </script>
+</body>
+</html>

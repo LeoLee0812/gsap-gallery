@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Toast 通知堆叠</title>
+<style>
+  /* 暗色主题基础样式 */
+  :root {
+    --bg: #0d1117;
+    --text: #e6edf3;
+    --accent: #58e6a8;
+    --card: #161b22;
+    --border: #30363d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+  }
+  h1 { font-size: 22px; font-weight: 600; }
+  p.hint { color: #8b949e; font-size: 14px; margin: 0; }
+
+  /* 触发按钮 */
+  .btn {
+    padding: 12px 24px;
+    background: var(--accent);
+    color: #06281b;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform .12s ease, filter .12s ease;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn:active { transform: scale(.96); }
+
+  /* toast 容器：固定在右上角 */
+  #toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    width: 320px;
+    z-index: 1000;
+    pointer-events: none; /* 容器本身不拦截点击，子元素单独开启 */
+  }
+
+  /* 单条 toast */
+  .toast {
+    pointer-events: auto;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .4);
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .toast-icon {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #06281b;
+    font-size: 13px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .toast-body { flex: 1; min-width: 0; }
+  .toast-title { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+  .toast-msg { font-size: 13px; color: #8b949e; line-height: 1.4; }
+
+  /* 关闭按钮 */
+  .toast-close {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    color: #8b949e;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    transition: color .12s ease;
+  }
+  .toast-close:hover { color: var(--text); }
+</style>
+</head>
+<body>
+  <h1>Toast 通知堆叠</h1>
+  <p class="hint">点击按钮从右上角弹出通知，几秒后自动消失，也可手动关闭</p>
+  <button class="btn" id="trigger">弹出一条通知</button>
+
+  <!-- toast 渲染容器 -->
+  <div id="toast-container"></div>
+
+  <!-- GSAP 核心库 -->
+  <script src="../lib/gsap.min.js"></script>
+  <script>
+    const container = document.getElementById("toast-container");
+
+    // 预设几组通知文案，循环使用
+    const presets = [
+      { title: "保存成功", msg: "你的修改已同步到云端。" },
+      { title: "新消息", msg: "Leo 给你发送了一条评论。" },
+      { title: "上传完成", msg: "文件 report.pdf 已上传。" },
+      { title: "任务提醒", msg: "还有 3 个待办事项未完成。" },
+      { title: "系统更新", msg: "已为你切换到最新版本。" },
+    ];
+    let presetIndex = 0;
+
+    // 创建并弹出一条 toast
+    function showToast() {
+      const data = presets[presetIndex % presets.length];
+      presetIndex++;
+
+      // 构建 DOM 结构
+      const toast = document.createElement("div");
+      toast.className = "toast";
+      toast.innerHTML = `
+        <div class="toast-icon">✓</div>
+        <div class="toast-body">
+          <div class="toast-title">${data.title}</div>
+          <div class="toast-msg">${data.msg}</div>
+        </div>
+        <button class="toast-close" aria-label="关闭">×</button>
+      `;
+
+      // 新 toast 插到容器最前面，旧的被向下挤
+      container.prepend(toast);
+
+      // 从右侧滑入：初始透明且向右偏移，同时旧 toast 因 DOM 高度变化自然下移
+      gsap.from(toast, {
+        x: 340,
+        opacity: 0,
+        duration: 0.5,
+        ease: "power3.out",
+      });
+
+      // 定时自动关闭
+      const timer = gsap.delayedCall(4, () => removeToast(toast));
+
+      // 点 × 手动关闭，并取消定时器
+      toast.querySelector(".toast-close").addEventListener("click", () => {
+        timer.kill();
+        removeToast(toast);
+      });
+    }
+
+    // 滑出并移除：滑出后用 height/margin 动画收拢空隙，让下方 toast 平滑上移
+    function removeToast(toast) {
+      if (toast.dataset.removing) return; // 防止重复触发
+      toast.dataset.removing = "1";
+
+      gsap.timeline()
+        // 第一步：向右滑出并淡出
+        .to(toast, {
+          x: 340,
+          opacity: 0,
+          duration: 0.4,
+          ease: "power3.in",
+        })
+        // 第二步：收拢自身占位高度，下方元素随之上移
+        .to(toast, {
+          height: 0,
+          marginBottom: 0,
+          paddingTop: 0,
+          paddingBottom: 0,
+          duration: 0.3,
+          ease: "power2.inOut",
+          onComplete: () => toast.remove(),
+        });
+    }
+
+    document.getElementById("trigger").addEventListener("click", showToast);
+
+    // 首屏自动演示一条
+    showToast();
+  </script>
+</body>
+</html>

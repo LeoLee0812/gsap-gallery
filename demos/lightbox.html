@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>灯箱画廊 · GSAP Flip</title>
+<style>
+  /* 暗色主题基础变量 */
+  :root {
+    --bg: #0d1117;
+    --text: #e6edf3;
+    --accent: #58e6a8;
+    --card: #161b22;
+    --border: #30363d;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    padding: 48px 24px;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 40px;
+  }
+
+  header h1 {
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+
+  header p {
+    margin-top: 8px;
+    font-size: 14px;
+    color: #8b949e;
+  }
+
+  header span { color: var(--accent); }
+
+  /* 缩略图网格 */
+  .gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 16px;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+
+  /* 单张缩略图：用 CSS 渐变当图片 */
+  .thumb {
+    aspect-ratio: 4 / 3;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    overflow: hidden;
+    position: relative;
+    /* will-change 提示浏览器为变换做优化，Flip 过渡更流畅 */
+    will-change: transform;
+  }
+
+  .thumb:hover {
+    border-color: var(--accent);
+  }
+
+  /* 每张图不同的渐变配色 */
+  .thumb:nth-child(1)  { background: linear-gradient(135deg, #ff6b6b, #feca57); }
+  .thumb:nth-child(2)  { background: linear-gradient(135deg, #54a0ff, #5f27cd); }
+  .thumb:nth-child(3)  { background: linear-gradient(135deg, #58e6a8, #1dd1a1); }
+  .thumb:nth-child(4)  { background: linear-gradient(135deg, #ff9ff3, #f368e0); }
+  .thumb:nth-child(5)  { background: linear-gradient(135deg, #feca57, #ff6b6b); }
+  .thumb:nth-child(6)  { background: linear-gradient(135deg, #48dbfb, #0abde3); }
+  .thumb:nth-child(7)  { background: linear-gradient(135deg, #1dd1a1, #10ac84); }
+  .thumb:nth-child(8)  { background: linear-gradient(135deg, #5f27cd, #341f97); }
+  .thumb:nth-child(9)  { background: linear-gradient(135deg, #ff6b6b, #ee5253); }
+  .thumb:nth-child(10) { background: linear-gradient(135deg, #00d2d3, #01a3a4); }
+  .thumb:nth-child(11) { background: linear-gradient(135deg, #c8d6e5, #8395a7); }
+  .thumb:nth-child(12) { background: linear-gradient(135deg, #ff9ff3, #54a0ff); }
+
+  /* 缩略图上的序号标签 */
+  .thumb .label {
+    position: absolute;
+    left: 12px;
+    bottom: 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  }
+
+  /* 进入灯箱状态：把缩略图定位到屏幕中央并放大 */
+  .thumb.is-lightbox {
+    position: fixed;
+    z-index: 20;
+    /* 用 inset + margin auto 实现居中，配合下方尺寸约束 */
+    top: 0; right: 0; bottom: 0; left: 0;
+    margin: auto;
+    width: min(80vw, 720px);
+    height: min(60vh, 540px);
+    aspect-ratio: auto;
+    border-color: var(--accent);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+  }
+
+  /* 半透明遮罩，独立于 Flip 单独淡入淡出 */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(13, 17, 23, 0.82);
+    backdrop-filter: blur(4px);
+    z-index: 10;
+    opacity: 0;
+    /* 默认不接收事件，激活时再打开 */
+    pointer-events: none;
+  }
+
+  .overlay.is-active {
+    pointer-events: auto;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>灯箱画廊</h1>
+    <p>点击任意缩略图放大到 <span>灯箱</span>，点遮罩或图片返回网格</p>
+  </header>
+
+  <!-- 缩略图网格，渐变占位当图片 -->
+  <div class="gallery" id="gallery">
+    <div class="thumb"><span class="label">01</span></div>
+    <div class="thumb"><span class="label">02</span></div>
+    <div class="thumb"><span class="label">03</span></div>
+    <div class="thumb"><span class="label">04</span></div>
+    <div class="thumb"><span class="label">05</span></div>
+    <div class="thumb"><span class="label">06</span></div>
+    <div class="thumb"><span class="label">07</span></div>
+    <div class="thumb"><span class="label">08</span></div>
+    <div class="thumb"><span class="label">09</span></div>
+    <div class="thumb"><span class="label">10</span></div>
+    <div class="thumb"><span class="label">11</span></div>
+    <div class="thumb"><span class="label">12</span></div>
+  </div>
+
+  <!-- 半透明遮罩层 -->
+  <div class="overlay" id="overlay"></div>
+
+  <script src="../lib/gsap.min.js"></script>
+  <script src="../lib/Flip.min.js"></script>
+  <script>
+    // 注册 Flip 插件
+    gsap.registerPlugin(Flip);
+
+    const overlay = document.getElementById('overlay');
+    const thumbs = document.querySelectorAll('.thumb');
+
+    // 当前处于灯箱状态的缩略图，null 表示未打开
+    let activeThumb = null;
+
+    // 打开灯箱：把目标缩略图从网格原位放大到屏幕中央
+    function openLightbox(thumb) {
+      // 1. 记录当前位置/尺寸状态
+      const state = Flip.getState(thumb);
+
+      // 2. 改 class 进入灯箱布局（fixed 居中放大）
+      thumb.classList.add('is-lightbox');
+      activeThumb = thumb;
+
+      // 3. Flip.from 从旧状态平滑过渡到新布局
+      Flip.from(state, {
+        duration: 0.6,
+        ease: 'power3.inOut',
+        absolute: true // 过渡期间脱离文档流，避免影响网格其它项
+      });
+
+      // 遮罩独立淡入
+      overlay.classList.add('is-active');
+      gsap.to(overlay, { opacity: 1, duration: 0.4, ease: 'power2.out' });
+    }
+
+    // 关闭灯箱：把缩略图从中央平滑送回网格原位
+    function closeLightbox() {
+      if (!activeThumb) return;
+      const thumb = activeThumb;
+
+      // 1. 记录灯箱状态
+      const state = Flip.getState(thumb);
+
+      // 2. 移除 class 回到网格布局
+      thumb.classList.remove('is-lightbox');
+      activeThumb = null;
+
+      // 3. Flip.from 平滑回到原位
+      Flip.from(state, {
+        duration: 0.55,
+        ease: 'power3.inOut',
+        absolute: true
+      });
+
+      // 遮罩独立淡出
+      gsap.to(overlay, {
+        opacity: 0,
+        duration: 0.35,
+        ease: 'power2.in',
+        onComplete: () => overlay.classList.remove('is-active')
+      });
+    }
+
+    // 给每张缩略图绑定点击：未打开则放大，已是当前灯箱则收回
+    thumbs.forEach(thumb => {
+      thumb.addEventListener('click', () => {
+        if (activeThumb === thumb) {
+          closeLightbox();
+        } else if (!activeThumb) {
+          openLightbox(thumb);
+        }
+      });
+    });
+
+    // 点遮罩关闭
+    overlay.addEventListener('click', closeLightbox);
+
+    // 按 Esc 关闭
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') closeLightbox();
+    });
+  </script>
+</body>
+</html>

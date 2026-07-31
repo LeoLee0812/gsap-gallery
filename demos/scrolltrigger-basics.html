@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>2. ScrollTrigger · 滚动触发动画</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#0d1117;color:#e6edf3;font-family:system-ui,sans-serif;overflow-x:hidden}
+  section{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:40px}
+  /* 卡片区：把三张拉开间距，让每张各自进入视口、依次触发 */
+  section.cards{justify-content:flex-start;padding:50vh 40px;gap:45vh}
+  h1{font-size:clamp(28px,6vw,72px);font-weight:800;text-align:center}
+  .hint{opacity:.5;font-size:16px}
+  .card{width:min(560px,90vw);padding:40px;border-radius:20px;background:#161b22;border:1px solid #30363d;font-size:18px;line-height:1.7}
+  /* 进度条固定在顶部 */
+  .bar{position:fixed;top:0;left:0;height:5px;background:#58e6a8;width:0;z-index:10}
+  .pin-wrap{height:300vh}
+  .pin-box{width:160px;height:160px;border-radius:24px;background:linear-gradient(135deg,#58e6a8,#3b82f6)}
+</style>
+</head>
+<body>
+<div class="bar" id="bar"></div>
+
+<section><h1>👇 往下滚动</h1><p class="hint">这条绿色进度条会跟着滚动走</p></section>
+
+<section class="cards">
+  <div class="card" id="c1">滚动到我 → 我会淡入并上浮（fade + slide）</div>
+  <div class="card" id="c2">我会从左边飞进来</div>
+  <div class="card" id="c3">我会缩放着出现</div>
+</section>
+
+<section class="pin-wrap">
+  <div class="pin-box" id="pin"></div>
+  <p class="hint">这个方块被「钉住」了，随滚动旋转变色（pin + scrub）</p>
+</section>
+
+<section><h1>🎉 这就是 ScrollTrigger</h1></section>
+
+<script src="../lib/gsap.min.js"></script>
+<script src="../lib/ScrollTrigger.min.js"></script>
+<script>
+  gsap.registerPlugin(ScrollTrigger);
+
+  // 顶部进度条绑定整页滚动
+  gsap.to("#bar", { width:"100%", ease:"none",
+    scrollTrigger:{ trigger:document.body, start:"top top", end:"bottom bottom", scrub:true } });
+
+  // 三张卡片各自进入视口时触发
+  gsap.from("#c1",{opacity:0,y:60,duration:1,scrollTrigger:{trigger:"#c1",start:"top 80%"}});
+  gsap.from("#c2",{opacity:0,x:-120,duration:1,scrollTrigger:{trigger:"#c2",start:"top 80%"}});
+  gsap.from("#c3",{opacity:0,scale:0.4,duration:1,scrollTrigger:{trigger:"#c3",start:"top 80%"}});
+
+  // pin 固定 + scrub 滚动绑定：方块钉在屏幕中央，随滚动旋转换色
+  gsap.to("#pin",{ rotate:720, borderRadius:"50%",
+    background:"linear-gradient(135deg,#ff5f56,#ffbd2e)",
+    scrollTrigger:{ trigger:".pin-wrap", start:"top top", end:"bottom bottom", pin:".pin-box", scrub:1 }});
+</script>
+</body>
+</html>

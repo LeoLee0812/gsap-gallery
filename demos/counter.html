@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据看板 · 数字滚动计数</title>
+<style>
+  /* 暗色主题基础样式 */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117;
+    color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 40px;
+    padding: 40px 20px;
+  }
+  h1 {
+    font-size: 22px;
+    font-weight: 600;
+    color: #e6edf3;
+    letter-spacing: 0.5px;
+  }
+  .subtitle {
+    font-size: 14px;
+    color: #8b949e;
+    margin-top: -28px;
+  }
+  /* 卡片横向排列容器 */
+  .cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    justify-content: center;
+    max-width: 960px;
+  }
+  /* 单个统计卡片 */
+  .card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 14px;
+    padding: 28px 32px;
+    min-width: 200px;
+    text-align: center;
+    /* 入场前的初始状态，由 GSAP 接管 */
+    opacity: 0;
+  }
+  .card .label {
+    font-size: 14px;
+    color: #8b949e;
+    margin-bottom: 12px;
+  }
+  /* 数字主体，强调色，等宽数字避免滚动时抖动 */
+  .card .value {
+    font-size: 38px;
+    font-weight: 700;
+    color: #58e6a8;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  /* 重新触发按钮 */
+  button {
+    background: #161b22;
+    color: #58e6a8;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    padding: 12px 28px;
+    font-size: 15px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  button:hover {
+    border-color: #58e6a8;
+    background: #1c2530;
+  }
+</style>
+</head>
+<body>
+  <h1>数据看板 · 实时数据展示</h1>
+  <p class="subtitle">数字从 0 滚动递增到目标值</p>
+
+  <div class="cards">
+    <!-- 每张卡片用 data-* 描述目标值与格式化规则 -->
+    <div class="card" data-target="12847" data-decimals="0" data-prefix="" data-suffix="">
+      <div class="label">用户数</div>
+      <div class="value">0</div>
+    </div>
+    <div class="card" data-target="98500" data-decimals="0" data-prefix="¥" data-suffix="">
+      <div class="label">营收</div>
+      <div class="value">¥0</div>
+    </div>
+    <div class="card" data-target="99.6" data-decimals="1" data-prefix="" data-suffix="%">
+      <div class="label">满意度</div>
+      <div class="value">0%</div>
+    </div>
+    <div class="card" data-target="1532" data-decimals="0" data-prefix="" data-suffix="">
+      <div class="label">今日订单</div>
+      <div class="value">0</div>
+    </div>
+  </div>
+
+  <button id="replay">重新播放</button>
+
+  <script src="../lib/gsap.min.js"></script>
+  <script>
+    // 千分位格式化：按指定小数位补齐，整数部分加逗号，再拼前后缀
+    function format(num, decimals, prefix, suffix) {
+      // 先按小数位固定，避免浮点误差
+      const fixed = Number(num).toFixed(decimals);
+      const parts = fixed.split('.');
+      // 整数部分插入千分位逗号
+      parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      return prefix + parts.join('.') + suffix;
+    }
+
+    const cards = gsap.utils.toArray('.card');
+
+    // 播放一整轮动画：卡片 stagger 入场 + 数字滚动
+    function play() {
+      // 重置卡片入场状态
+      gsap.set(cards, { opacity: 0, y: 24 });
+
+      // 卡片错位入场
+      gsap.to(cards, {
+        opacity: 1,
+        y: 0,
+        duration: 0.5,
+        ease: 'power2.out',
+        stagger: 0.12
+      });
+
+      // 为每张卡片单独做数字补间
+      cards.forEach((card, i) => {
+        const target = parseFloat(card.dataset.target);
+        const decimals = parseInt(card.dataset.decimals, 10);
+        const prefix = card.dataset.prefix;
+        const suffix = card.dataset.suffix;
+        const valueEl = card.querySelector('.value');
+
+        // 用一个代理对象承载数值，gsap 补间它的 val 属性
+        const counter = { val: 0 };
+        // 先把显示重置为 0（带格式）
+        valueEl.textContent = format(0, decimals, prefix, suffix);
+
+        gsap.to(counter, {
+          val: target,
+          duration: 2,
+          // 缓动减速，末尾慢下来更有「停稳」的质感
+          ease: 'power2.out',
+          // 入场 stagger 同步，数字稍晚于卡片出现
+          delay: 0.2 + i * 0.12,
+          onUpdate: () => {
+            valueEl.textContent = format(counter.val, decimals, prefix, suffix);
+          }
+        });
+      });
+    }
+
+    // 首次加载播放
+    play();
+
+    // 按钮重新触发
+    document.getElementById('replay').addEventListener('click', play);
+  </script>
+</body>
+</html>

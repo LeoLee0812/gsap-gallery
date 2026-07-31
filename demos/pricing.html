@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>定价卡片 · GSAP 动效</title>
+<style>
+  /* 暗色主题全局样式 */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117;
+    color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+  }
+  h1 {
+    font-size: 28px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .subtitle {
+    color: #8b949e;
+    font-size: 15px;
+    margin-bottom: 48px;
+  }
+  /* 卡片容器，三列布局 */
+  .cards {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  /* 单张定价卡片 */
+  .card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 16px;
+    padding: 32px 28px;
+    width: 280px;
+    /* 初始隐藏，由 GSAP 控制入场 */
+    opacity: 0;
+    cursor: pointer;
+    will-change: transform, opacity;
+  }
+  /* 推荐卡片更大并带强调色边框 */
+  .card.featured {
+    border: 1.5px solid #58e6a8;
+    box-shadow: 0 0 30px rgba(88, 230, 168, 0.12);
+  }
+  .badge {
+    display: inline-block;
+    background: #58e6a8;
+    color: #0d1117;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 4px 12px;
+    border-radius: 999px;
+    margin-bottom: 16px;
+  }
+  .plan-name {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .plan-desc {
+    color: #8b949e;
+    font-size: 13px;
+    margin-bottom: 24px;
+    min-height: 36px;
+  }
+  .price {
+    font-size: 40px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .price .unit {
+    font-size: 15px;
+    color: #8b949e;
+    font-weight: 400;
+  }
+  .features {
+    list-style: none;
+    margin: 24px 0;
+  }
+  .features li {
+    font-size: 14px;
+    color: #c9d1d9;
+    padding: 8px 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .features li::before {
+    content: "✓";
+    color: #58e6a8;
+    font-weight: 700;
+  }
+  .btn {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #30363d;
+    background: transparent;
+    color: #e6edf3;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.2s, border-color 0.2s;
+  }
+  .btn:hover { border-color: #58e6a8; }
+  /* 推荐卡片按钮使用强调色填充 */
+  .featured .btn {
+    background: #58e6a8;
+    color: #0d1117;
+    border-color: #58e6a8;
+  }
+</style>
+</head>
+<body>
+  <h1>选择适合你的套餐</h1>
+  <p class="subtitle">随时升级或降级，按月灵活计费</p>
+
+  <div class="cards">
+    <!-- 基础套餐 -->
+    <div class="card">
+      <div class="plan-name">基础版</div>
+      <div class="plan-desc">适合个人开发者起步使用</div>
+      <div class="price">¥29<span class="unit">/月</span></div>
+      <ul class="features">
+        <li>1 个项目</li>
+        <li>5GB 存储空间</li>
+        <li>社区支持</li>
+      </ul>
+      <button class="btn">开始使用</button>
+    </div>
+
+    <!-- 推荐套餐（中间，更大） -->
+    <div class="card featured">
+      <span class="badge">推荐</span>
+      <div class="plan-name">专业版</div>
+      <div class="plan-desc">适合成长中的团队与项目</div>
+      <div class="price">¥99<span class="unit">/月</span></div>
+      <ul class="features">
+        <li>无限项目</li>
+        <li>100GB 存储空间</li>
+        <li>优先邮件支持</li>
+        <li>高级分析面板</li>
+      </ul>
+      <button class="btn">立即选择</button>
+    </div>
+
+    <!-- 企业套餐 -->
+    <div class="card">
+      <div class="plan-name">企业版</div>
+      <div class="plan-desc">适合大规模团队定制需求</div>
+      <div class="price">¥299<span class="unit">/月</span></div>
+      <ul class="features">
+        <li>无限项目与成员</li>
+        <li>1TB 存储空间</li>
+        <li>专属客户经理</li>
+      </ul>
+      <button class="btn">联系销售</button>
+    </div>
+  </div>
+
+  <!-- GSAP 核心库 -->
+  <script src="../lib/gsap.min.js"></script>
+  <script>
+    const cards = gsap.utils.toArray(".card");
+    const featured = document.querySelector(".card.featured");
+
+    // 推荐卡片初始尺寸更大（scale 放大）
+    gsap.set(featured, { scale: 1.06 });
+
+    // 入场 timeline：三张卡片 stagger 依次上浮淡入
+    const intro = gsap.timeline();
+    intro.from(cards, {
+      y: 60,
+      opacity: 0,
+      duration: 0.7,
+      ease: "power3.out",
+      stagger: 0.15,
+      // from 会把当前值作为终点，这里需手动恢复推荐卡的 scale
+      onComplete: () => gsap.set(featured, { clearProps: "opacity" })
+    });
+    // 让卡片可见（from 动画结束后 opacity 回到 1）
+    gsap.set(cards, { opacity: 1, delay: 0 });
+
+    // 推荐卡片入场后持续轻微浮动（yoyo 循环）
+    intro.to(featured, {
+      y: -10,
+      duration: 1.8,
+      ease: "sine.inOut",
+      repeat: -1,
+      yoyo: true
+    }, ">-0.2");
+
+    // 悬停交互：放大上浮当前卡，其余略微暗淡
+    cards.forEach((card) => {
+      const isFeatured = card.classList.contains("featured");
+      const baseScale = isFeatured ? 1.06 : 1;
+
+      card.addEventListener("mouseenter", () => {
+        // 当前卡片放大上浮
+        gsap.to(card, {
+          scale: baseScale + 0.06,
+          y: "-=8",
+          duration: 0.35,
+          ease: "power2.out",
+          overwrite: "auto"
+        });
+        // 其他卡片降低不透明度
+        cards.forEach((other) => {
+          if (other !== card) {
+            gsap.to(other, { opacity: 0.5, duration: 0.35, overwrite: "auto" });
+          }
+        });
+      });
+
+      card.addEventListener("mouseleave", () => {
+        // 恢复当前卡片缩放与位移
+        gsap.to(card, {
+          scale: baseScale,
+          y: isFeatured ? 0 : 0,
+          duration: 0.35,
+          ease: "power2.out",
+          overwrite: "auto"
+        });
+        // 其他卡片恢复不透明度
+        cards.forEach((other) => {
+          if (other !== card) {
+            gsap.to(other, { opacity: 1, duration: 0.35, overwrite: "auto" });
+          }
+        });
+      });
+    });
+  </script>
+</body>
+</html>

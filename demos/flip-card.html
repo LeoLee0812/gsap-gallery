@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D 翻牌卡片</title>
+<style>
+  /* 全局暗色主题与基础布局 */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    min-height: 100vh;
+    background: #0d1117;
+    color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 40px;
+    padding: 40px 20px;
+  }
+  h1 { font-size: 24px; font-weight: 600; }
+  .hint { color: #8b949e; font-size: 14px; margin-top: -24px; }
+
+  /* 卡片容器区域 */
+  .deck {
+    display: flex;
+    gap: 32px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  /* perspective 提供 3D 透视景深，距离越小立体感越强 */
+  .scene {
+    width: 240px;
+    height: 320px;
+    perspective: 1000px;
+  }
+
+  /* 卡片本体：preserve-3d 让子元素保留各自的 3D 空间位置 */
+  .card {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+    cursor: pointer;
+    will-change: transform;
+  }
+
+  /* 正反两面共用样式，backface-visibility:hidden 隐藏背对视角的那一面 */
+  .face {
+    position: absolute;
+    inset: 0;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    border-radius: 16px;
+    background: #161b22;
+    border: 1px solid #30363d;
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+  }
+
+  /* 正面：图标 + 标题，居中展示 */
+  .front {
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    text-align: center;
+  }
+  .front .icon { font-size: 64px; line-height: 1; }
+  .front .title { font-size: 20px; font-weight: 600; }
+  .front .sub { color: #8b949e; font-size: 13px; }
+
+  /* 背面：预先沿 Y 轴旋转 180°，翻转后正好正对用户 */
+  .back {
+    transform: rotateY(180deg);
+    justify-content: center;
+    gap: 14px;
+  }
+  .back .back-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #58e6a8;
+  }
+  .back .desc { color: #c9d1d9; font-size: 14px; line-height: 1.6; }
+  .back .tag {
+    margin-top: 8px;
+    align-self: flex-start;
+    font-size: 12px;
+    color: #58e6a8;
+    border: 1px solid #30363d;
+    border-radius: 999px;
+    padding: 4px 12px;
+  }
+</style>
+</head>
+<body>
+  <h1>3D 翻牌卡片</h1>
+  <p class="hint">悬停或点击卡片，绕 Y 轴翻转 180° 查看背面</p>
+
+  <div class="deck">
+    <!-- 卡片 1 -->
+    <div class="scene">
+      <div class="card">
+        <div class="face front">
+          <div class="icon">🚀</div>
+          <div class="title">极速性能</div>
+          <div class="sub">悬停翻面</div>
+        </div>
+        <div class="face back">
+          <div class="back-title">闪电般加载</div>
+          <div class="desc">采用边缘缓存与按需加载，让首屏渲染快到几乎察觉不到等待。</div>
+          <div class="tag">Performance</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 卡片 2 -->
+    <div class="scene">
+      <div class="card">
+        <div class="face front">
+          <div class="icon">🔒</div>
+          <div class="title">安全可靠</div>
+          <div class="sub">悬停翻面</div>
+        </div>
+        <div class="face back">
+          <div class="back-title">端到端加密</div>
+          <div class="desc">全链路数据加密与多重权限校验，保障每一次请求都安全无虞。</div>
+          <div class="tag">Security</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 卡片 3 -->
+    <div class="scene">
+      <div class="card">
+        <div class="face front">
+          <div class="icon">🎨</div>
+          <div class="title">优雅设计</div>
+          <div class="sub">悬停翻面</div>
+        </div>
+        <div class="face back">
+          <div class="back-title">细节即体验</div>
+          <div class="desc">精心打磨的暗色界面与流畅微动效，让每个交互都赏心悦目。</div>
+          <div class="tag">Design</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="../lib/gsap.min.js"></script>
+  <script>
+    // 为每张卡片绑定翻转逻辑
+    document.querySelectorAll('.card').forEach(card => {
+      // 记录当前是否处于翻转状态，避免重复触发
+      let flipped = false;
+
+      // 执行翻转动画：rotationY 在 0 与 180 之间切换
+      const flip = (toBack) => {
+        if (flipped === toBack) return;
+        flipped = toBack;
+        gsap.to(card, {
+          rotationY: toBack ? 180 : 0,
+          duration: 0.8,
+          // back.out 缓动带来轻微回弹，强化立体翻转的物理质感
+          ease: 'back.out(1.4)'
+        });
+      };
+
+      // 悬停翻到背面，移出翻回正面
+      card.addEventListener('mouseenter', () => flip(true));
+      card.addEventListener('mouseleave', () => flip(false));
+      // 点击切换正反面，兼容触屏设备
+      card.addEventListener('click', () => flip(!flipped));
+    });
+  </script>
+</body>
+</html>

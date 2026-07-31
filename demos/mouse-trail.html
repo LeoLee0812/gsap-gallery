@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>鼠标拖尾粒子</title>
+<style>
+  /* 暗色主题基础样式 */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #0d1117;
+    color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+    cursor: crosshair;
+  }
+  /* 居中提示文字 */
+  .hint {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    pointer-events: none;
+    user-select: none;
+    z-index: 1;
+  }
+  .hint h1 {
+    font-size: clamp(1.5rem, 5vw, 3rem);
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: #e6edf3;
+  }
+  .hint p {
+    margin-top: 0.75rem;
+    font-size: 0.95rem;
+    color: #8b949e;
+  }
+  .hint .accent { color: #58e6a8; }
+  /* 拖尾点：固定定位的圆形光斑 */
+  .dot {
+    position: fixed;
+    top: 0;
+    left: 0;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 2;
+    will-change: transform;
+    /* 用混合模式让重叠的光斑更亮 */
+    mix-blend-mode: screen;
+  }
+  /* mousemove 生成的临时粒子 */
+  .particle {
+    position: fixed;
+    top: 0;
+    left: 0;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 3;
+    will-change: transform, opacity;
+    mix-blend-mode: screen;
+  }
+</style>
+</head>
+<body>
+  <div class="hint">
+    <h1>移动鼠标拖出 <span class="accent">光斑尾迹</span></h1>
+    <p>链式跟随的渐隐光点 + 实时迸发的彩色粒子</p>
+  </div>
+
+  <script src="../lib/gsap.min.js"></script>
+  <script>
+    // 鼠标当前坐标，初始放在屏幕中心
+    let mouseX = window.innerWidth / 2;
+    let mouseY = window.innerHeight / 2;
+
+    // ============ 一、链式跟随的光斑尾迹 ============
+    // 创建一组光斑点，每个点以递增的时长跟随前一个点，形成层叠延迟感
+    const TRAIL_COUNT = 18;
+    // 强调绿到青蓝的渐变色相区间
+    const trailDots = [];
+
+    for (let i = 0; i < TRAIL_COUNT; i++) {
+      const dot = document.createElement("div");
+      dot.className = "dot";
+      // 越靠后的点越小、越淡
+      const t = i / TRAIL_COUNT;
+      const size = gsap.utils.interpolate(26, 6, t);
+      // 色相从绿青(150)过渡到蓝紫(265)
+      const hue = gsap.utils.interpolate(150, 265, t);
+      dot.style.width = size + "px";
+      dot.style.height = size + "px";
+      dot.style.background = `radial-gradient(circle, hsla(${hue},90%,68%,0.9) 0%, hsla(${hue},90%,60%,0) 70%)`;
+      // 用负 margin 让光斑中心对齐坐标
+      dot.style.marginLeft = -size / 2 + "px";
+      dot.style.marginTop = -size / 2 + "px";
+      document.body.appendChild(dot);
+
+      // 为每个点准备 quickTo，越靠后的点跟随越慢（时长递增）
+      const duration = 0.3 + i * 0.06;
+      trailDots.push({
+        el: dot,
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+        xTo: gsap.quickTo(dot, "x", { duration, ease: "power3" }),
+        yTo: gsap.quickTo(dot, "y", { duration, ease: "power3" }),
+      });
+    }
+
+    // 用 ticker 驱动链式跟随：第 0 个点追鼠标，其余每个点追前一个点
+    gsap.ticker.add(() => {
+      let targetX = mouseX;
+      let targetY = mouseY;
+      for (let i = 0; i < trailDots.length; i++) {
+        const dot = trailDots[i];
+        // 记录当前位置作为下一个点的目标，制造链条牵引效果
+        const prevX = dot.x;
+        const prevY = dot.y;
+        dot.x = targetX;
+        dot.y = targetY;
+        dot.xTo(targetX);
+        dot.yTo(targetY);
+        targetX = prevX;
+        targetY = prevY;
+      }
+    });
+
+    // ============ 二、mousemove 迸发的彩色粒子 ============
+    // 每次鼠标移动时随机生成小粒子，渐隐缩小后自动移除
+    function spawnParticle(x, y) {
+      const particle = document.createElement("div");
+      particle.className = "particle";
+      const size = gsap.utils.random(6, 14);
+      // 彩虹色相随机，营造彩色碎片感
+      const hue = gsap.utils.random(120, 300);
+      particle.style.width = size + "px";
+      particle.style.height = size + "px";
+      particle.style.background = `radial-gradient(circle, hsla(${hue},95%,70%,1) 0%, hsla(${hue},95%,60%,0) 75%)`;
+      particle.style.marginLeft = -size / 2 + "px";
+      particle.style.marginTop = -size / 2 + "px";
+      document.body.appendChild(particle);
+
+      // 随机向四周飘散
+      const angle = gsap.utils.random(0, Math.PI * 2);
+      const distance = gsap.utils.random(20, 70);
+      gsap.set(particle, { x, y });
+      gsap.to(particle, {
+        x: x + Math.cos(angle) * distance,
+        y: y + Math.sin(angle) * distance,
+        scale: 0,           // 缩小消失
+        opacity: 0,         // 渐隐消失
+        duration: gsap.utils.random(0.6, 1.1),
+        ease: "power2.out",
+        onComplete: () => particle.remove(), // 动画结束移除节点，避免内存泄漏
+      });
+    }
+
+    // 监听鼠标移动，更新坐标并节流生成粒子
+    let lastSpawn = 0;
+    window.addEventListener("mousemove", (e) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+      // 节流：每隔约 30ms 生成一个粒子，避免数量爆炸
+      const now = performance.now();
+      if (now - lastSpawn > 30) {
+        spawnParticle(e.clientX, e.clientY);
+        lastSpawn = now;
+      }
+    });
+
+    // 触摸设备支持
+    window.addEventListener("touchmove", (e) => {
+      const touch = e.touches[0];
+      mouseX = touch.clientX;
+      mouseY = touch.clientY;
+      spawnParticle(touch.clientX, touch.clientY);
+    }, { passive: true });
+  </script>
+</body>
+</html>

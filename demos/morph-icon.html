@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GSAP 实战 · 图标 Morph 切换</title>
+<style>
+  /* 暗色主题统一变量 */
+  :root {
+    --bg: #0d1117;
+    --text: #e6edf3;
+    --accent: #58e6a8;
+    --card: #161b22;
+    --border: #30363d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 32px;
+    padding: 40px 16px;
+  }
+  h1 {
+    font-size: 22px;
+    font-weight: 600;
+    margin: 0;
+    letter-spacing: 0.5px;
+  }
+  .subtitle {
+    color: #8b949e;
+    font-size: 14px;
+    margin-top: -20px;
+  }
+  /* 示例卡片容器：横向排列两个 demo */
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+    justify-content: center;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    width: 220px;
+  }
+  .card-label {
+    font-size: 13px;
+    color: #8b949e;
+  }
+  /* 图标按钮 */
+  .icon-btn {
+    width: 88px;
+    height: 88px;
+    border-radius: 50%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.2s, transform 0.1s;
+    outline: none;
+  }
+  .icon-btn:hover { border-color: var(--accent); }
+  .icon-btn:active { transform: scale(0.94); }
+  .icon-btn svg {
+    width: 44px;
+    height: 44px;
+  }
+  /* 用于 morph 的可见路径：描边样式（汉堡/X）或填充样式（播放/暂停） */
+  .stroke-icon path {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .fill-icon path {
+    fill: var(--accent);
+    stroke: none;
+  }
+  .state-text {
+    font-size: 12px;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+  /* 隐藏的目标路径仓库：仅提供 d 数据，不渲染 */
+  .vault { position: absolute; width: 0; height: 0; overflow: hidden; }
+</style>
+</head>
+<body>
+  <h1>GSAP 实战 · 图标 Morph 平滑变形</h1>
+  <p class="subtitle">点击按钮，SVG 路径在两种状态间平滑补间</p>
+
+  <div class="row">
+    <!-- 示例一：汉堡菜单 ↔ 关闭(X) -->
+    <div class="card">
+      <button class="icon-btn" id="menuBtn" aria-label="切换菜单/关闭">
+        <svg class="stroke-icon" viewBox="0 0 100 100">
+          <!-- 上中下三条线合并为一条 path，三段子路径，便于整体 morph -->
+          <path id="menuPath" d="M20 32 L80 32 M20 50 L80 50 M20 68 L80 68" />
+        </svg>
+      </button>
+      <div class="card-label">汉堡菜单 ↔ 关闭</div>
+      <div class="state-text" id="menuState">状态：菜单</div>
+    </div>
+
+    <!-- 示例二：播放 ▶ ↔ 暂停 ⏸ -->
+    <div class="card">
+      <button class="icon-btn" id="playBtn" aria-label="切换播放/暂停">
+        <svg class="fill-icon" viewBox="0 0 100 100">
+          <path id="playPath" d="M30 22 L30 78 L78 50 L78 50 Z" />
+        </svg>
+      </button>
+      <div class="card-label">播放 ▶ ↔ 暂停 ⏸</div>
+      <div class="state-text" id="playState">状态：播放</div>
+    </div>
+  </div>
+
+  <!-- 隐藏的目标路径仓库：提供各形态的 d 数据。点数与起始路径保持一致以保证平滑变形 -->
+  <svg class="vault" aria-hidden="true">
+    <!-- X 形态：与汉堡同样由三段子路径组成（中间线缩为一点隐藏，上下两线旋转成叉） -->
+    <path id="closePath" d="M28 28 L72 72 M50 50 L50 50 M28 72 L72 28" />
+    <!-- 暂停形态：与播放同为 4 个顶点的多边形，拆成左右两个竖条的视觉效果 -->
+    <path id="pausePath" d="M32 24 L32 76 L46 76 L46 24 Z M68 76 L68 24 L54 24 L54 76 Z" />
+  </svg>
+
+  <!-- GSAP 核心 + MorphSVG 插件 -->
+  <script src="../lib/gsap.min.js"></script>
+  <script src="../lib/MorphSVGPlugin.min.js"></script>
+  <script>
+    // 注册 MorphSVG 插件
+    gsap.registerPlugin(MorphSVGPlugin);
+
+    // ===== 示例一：汉堡 ↔ X =====
+    let menuOpen = false; // false=汉堡, true=X
+    const menuBtn = document.getElementById("menuBtn");
+    const menuState = document.getElementById("menuState");
+    const menuD = {
+      hamburger: "M20 32 L80 32 M20 50 L80 50 M20 68 L80 68",
+      close: "M28 28 L72 72 M50 50 L50 50 M28 72 L72 28"
+    };
+
+    menuBtn.addEventListener("click", () => {
+      menuOpen = !menuOpen;
+      gsap.to("#menuPath", {
+        duration: 0.5,
+        // morphSVG 在当前路径与目标路径间补间；shapeIndex:"auto" 让插件自动对齐顶点
+        morphSVG: { shape: menuOpen ? menuD.close : menuD.hamburger, shapeIndex: "auto" },
+        ease: "power3.inOut"
+      });
+      menuState.textContent = "状态：" + (menuOpen ? "关闭" : "菜单");
+    });
+
+    // ===== 示例二：播放 ▶ ↔ 暂停 ⏸ =====
+    let playing = false; // false=播放图标, true=暂停图标
+    const playBtn = document.getElementById("playBtn");
+    const playState = document.getElementById("playState");
+    const playD = {
+      play: "M30 22 L30 78 L78 50 L78 50 Z",
+      pause: "M32 24 L32 76 L46 76 L46 24 Z M68 76 L68 24 L54 24 L54 76 Z"
+    };
+
+    playBtn.addEventListener("click", () => {
+      playing = !playing;
+      gsap.to("#playPath", {
+        duration: 0.5,
+        morphSVG: { shape: playing ? playD.pause : playD.play, shapeIndex: "auto" },
+        ease: "power2.inOut"
+      });
+      playState.textContent = "状态：" + (playing ? "暂停" : "播放");
+    });
+  </script>
+</body>
+</html>

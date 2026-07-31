@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>滚动绘制 SVG 路径</title>
+<style>
+  /* 暗色主题基础样式 */
+  :root {
+    --bg: #0d1117;
+    --text: #e6edf3;
+    --accent: #58e6a8;
+    --card: #161b22;
+    --border: #30363d;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+    line-height: 1.6;
+  }
+
+  /* 顶部标题区 */
+  header {
+    height: 60vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 0 20px;
+  }
+  header h1 { font-size: clamp(28px, 5vw, 48px); margin-bottom: 16px; }
+  header p { color: #8b949e; max-width: 520px; }
+  .hint {
+    margin-top: 32px;
+    color: var(--accent);
+    font-size: 14px;
+    animation: bob 1.6s ease-in-out infinite;
+  }
+  @keyframes bob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(8px)} }
+
+  /* 主体：左侧固定 SVG 画布 + 右侧节点说明 */
+  .timeline {
+    position: relative;
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 0 20px;
+  }
+
+  /* SVG 容器：粘性定位，滚动时停留在视口 */
+  .canvas-wrap {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+  svg { width: 100%; height: 90vh; max-width: 900px; }
+
+  /* 主路径与发光描边 */
+  .route {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 4;
+    stroke-linecap: round;
+    filter: drop-shadow(0 0 6px rgba(88,230,168,0.5));
+  }
+  /* 节点圆点 */
+  .dot { fill: var(--card); stroke: var(--accent); stroke-width: 3; }
+
+  /* 滚动驱动区：高度撑出可滚动空间，覆盖在 sticky 画布之上 */
+  .scroll-track { position: relative; margin-top: -100vh; }
+
+  /* 节点说明卡片 */
+  .node {
+    min-height: 70vh;
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    pointer-events: none;
+  }
+  .node:nth-child(even) { justify-content: flex-end; }
+  .node-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 24px;
+    max-width: 320px;
+    opacity: 0.25;
+    transform: translateY(20px);
+    transition: opacity .5s ease, transform .5s ease, border-color .5s ease;
+  }
+  /* 点亮状态 */
+  .node-card.lit {
+    opacity: 1;
+    transform: translateY(0);
+    border-color: var(--accent);
+    box-shadow: 0 0 24px rgba(88,230,168,0.18);
+  }
+  .node-card .step {
+    color: var(--accent);
+    font-size: 13px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  .node-card h3 { margin: 4px 0 8px; font-size: 20px; }
+  .node-card p { color: #8b949e; font-size: 14px; }
+
+  footer { height: 50vh; display: flex; align-items: center; justify-content: center; color: #8b949e; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>蜿蜒路线，随滚而生</h1>
+    <p>向下滚动，一条贯穿页面的曲线会被逐段「画」出来，沿途的节点也会依次点亮。</p>
+    <div class="hint">向下滚动 ↓</div>
+  </header>
+
+  <div class="timeline">
+    <!-- 粘性 SVG 画布：蜿蜒曲线 + 节点圆点 -->
+    <div class="canvas-wrap">
+      <svg viewBox="0 0 400 1400" preserveAspectRatio="xMidYMid meet">
+        <!-- 主蜿蜒路径：S 形蛇形曲线，贯穿整张画布 -->
+        <path id="route" class="route"
+          d="M 200 40
+             C 60 160, 60 280, 200 360
+             C 340 440, 340 580, 200 660
+             C 60 740, 60 880, 200 960
+             C 340 1040, 340 1200, 200 1320" />
+        <!-- 四个节点圆点，对应路径上的关键位置 -->
+        <circle class="dot" data-node="0" cx="200" cy="40" r="9" />
+        <circle class="dot" data-node="1" cx="200" cy="360" r="9" />
+        <circle class="dot" data-node="2" cx="200" cy="660" r="9" />
+        <circle class="dot" data-node="3" cx="200" cy="960" r="9" />
+        <circle class="dot" data-node="4" cx="200" cy="1320" r="9" />
+      </svg>
+    </div>
+
+    <!-- 滚动驱动区：每个 node 触发对应卡片点亮 -->
+    <div class="scroll-track">
+      <div class="node">
+        <div class="node-card" data-node="0">
+          <div class="step">阶段 01</div>
+          <h3>起点 · 立项</h3>
+          <p>一切从这里开始，确定方向与目标。</p>
+        </div>
+      </div>
+      <div class="node">
+        <div class="node-card" data-node="1">
+          <div class="step">阶段 02</div>
+          <h3>设计 · 原型</h3>
+          <p>将想法转化为可见的草图与交互。</p>
+        </div>
+      </div>
+      <div class="node">
+        <div class="node-card" data-node="2">
+          <div class="step">阶段 03</div>
+          <h3>开发 · 构建</h3>
+          <p>把蓝图一行行写成可运行的产品。</p>
+        </div>
+      </div>
+      <div class="node">
+        <div class="node-card" data-node="3">
+          <div class="step">阶段 04</div>
+          <h3>测试 · 打磨</h3>
+          <p>反复验证细节，让体验更顺滑。</p>
+        </div>
+      </div>
+      <div class="node">
+        <div class="node-card" data-node="4">
+          <div class="step">阶段 05</div>
+          <h3>终点 · 发布</h3>
+          <p>路线抵达终点，正式与世界相见。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>路线已绘制完成 ✦</footer>
+
+  <!-- GSAP 核心 + 插件，从 jsDelivr CDN 加载 -->
+  <script src="../lib/gsap.min.js"></script>
+  <script src="../lib/ScrollTrigger.min.js"></script>
+  <script src="../lib/DrawSVGPlugin.min.js"></script>
+  <script>
+    // 注册所需插件
+    gsap.registerPlugin(ScrollTrigger, DrawSVGPlugin);
+
+    // 主路径随滚动逐段绘制：scrub 把动画进度绑定到 .timeline 整段滚动
+    gsap.from("#route", {
+      drawSVG: "0%",          // 从 0% 长度开始，向上滚回则收回
+      ease: "none",
+      scrollTrigger: {
+        trigger: ".timeline",
+        start: "top top",     // 画布顶部对齐视口顶部时开始
+        end: "bottom bottom", // 画布底部对齐视口底部时结束
+        scrub: 1              // 平滑跟随滚动进度
+      }
+    });
+
+    // 每个节点卡片在进入视口中部时点亮，对应的圆点同步放大
+    gsap.utils.toArray(".node-card").forEach((card) => {
+      const idx = card.dataset.node;
+      const dot = document.querySelector(`.dot[data-node="${idx}"]`);
+      ScrollTrigger.create({
+        trigger: card,
+        start: "top center",  // 卡片顶部到达视口中线时触发
+        onEnter:     () => { card.classList.add("lit"); litDot(dot, true); },
+        onLeaveBack: () => { card.classList.remove("lit"); litDot(dot, false); }
+      });
+    });
+
+    // 圆点点亮/熄灭的小动画
+    function litDot(dot, on) {
+      if (!dot) return;
+      gsap.to(dot, {
+        attr: { r: on ? 13 : 9 },
+        fill: on ? "#58e6a8" : "#161b22",
+        duration: 0.4,
+        ease: "back.out(2)"
+      });
+    }
+  </script>
+</body>
+</html>

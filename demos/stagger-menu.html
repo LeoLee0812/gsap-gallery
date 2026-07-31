@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GSAP 实战 · 全屏 Stagger 导航菜单</title>
+<style>
+  /* 暗色主题统一变量 */
+  :root {
+    --bg: #0d1117;
+    --text: #e6edf3;
+    --accent: #58e6a8;
+    --card: #161b22;
+    --border: #30363d;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* 顶部栏：左侧品牌名 + 右上角汉堡按钮 */
+  .topbar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 72px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 32px;
+    z-index: 20;
+  }
+
+  .brand {
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+  .brand span { color: var(--accent); }
+
+  /* 汉堡 / 关闭按钮：复用同一个按钮，靠 .open 类切换形态 */
+  .menu-btn {
+    width: 48px;
+    height: 48px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    border-radius: 10px;
+    cursor: pointer;
+    position: relative;
+    z-index: 30;
+    transition: border-color 0.25s ease;
+  }
+  .menu-btn:hover { border-color: var(--accent); }
+
+  /* 三条横线，用伪元素无法承载第三条，这里用三个 span */
+  .menu-btn .bar {
+    position: absolute;
+    left: 50%;
+    width: 22px;
+    height: 2px;
+    background: var(--text);
+    border-radius: 2px;
+    transform: translateX(-50%);
+    transition: transform 0.3s ease, opacity 0.3s ease, background 0.3s ease;
+  }
+  .menu-btn .bar:nth-child(1) { top: 17px; }
+  .menu-btn .bar:nth-child(2) { top: 23px; }
+  .menu-btn .bar:nth-child(3) { top: 29px; }
+
+  /* 打开状态下变成 X，并染上强调色 */
+  .menu-btn.open .bar { background: var(--accent); }
+  .menu-btn.open .bar:nth-child(1) { top: 23px; transform: translateX(-50%) rotate(45deg); }
+  .menu-btn.open .bar:nth-child(2) { opacity: 0; }
+  .menu-btn.open .bar:nth-child(3) { top: 23px; transform: translateX(-50%) rotate(-45deg); }
+
+  /* 全屏遮罩菜单：初始用 clip-path 收起到顶部，由 GSAP 控制展开 */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--card);
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0 8vw;
+    /* 初始不可见且不响应点击，避免遮挡背景内容 */
+    visibility: hidden;
+  }
+
+  .menu-list { list-style: none; }
+
+  .menu-item {
+    /* 初始状态由 GSAP set，这里仅给出排版 */
+    overflow: hidden;
+  }
+
+  .menu-item a {
+    display: inline-block;
+    color: var(--text);
+    text-decoration: none;
+    font-size: clamp(32px, 7vw, 64px);
+    font-weight: 700;
+    line-height: 1.45;
+    transition: color 0.25s ease;
+  }
+  .menu-item a:hover { color: var(--accent); }
+
+  .menu-item .index {
+    color: var(--accent);
+    font-size: 0.4em;
+    font-weight: 500;
+    margin-right: 16px;
+    vertical-align: middle;
+  }
+
+  /* 背景占位内容，证明遮罩是覆盖在页面之上的 */
+  .hero {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0 8vw;
+  }
+  .hero h1 {
+    font-size: clamp(36px, 6vw, 72px);
+    line-height: 1.2;
+  }
+  .hero h1 em { color: var(--accent); font-style: normal; }
+  .hero p {
+    margin-top: 20px;
+    max-width: 520px;
+    color: #9aa6b2;
+    font-size: 17px;
+    line-height: 1.7;
+  }
+  .hint {
+    margin-top: 36px;
+    font-size: 14px;
+    color: #9aa6b2;
+    border: 1px solid var(--border);
+    padding: 10px 16px;
+    border-radius: 8px;
+    display: inline-block;
+  }
+  .hint b { color: var(--accent); }
+</style>
+</head>
+<body>
+
+  <!-- 顶部栏 -->
+  <header class="topbar">
+    <div class="brand">Aurora<span>.</span></div>
+    <!-- 汉堡按钮：点击切换菜单 -->
+    <button class="menu-btn" id="menuBtn" aria-label="切换菜单">
+      <span class="bar"></span>
+      <span class="bar"></span>
+      <span class="bar"></span>
+    </button>
+  </header>
+
+  <!-- 背景内容 -->
+  <main class="hero">
+    <h1>设计有<em>呼吸感</em>的<br>交互动效。</h1>
+    <p>GSAP Timeline 配合 stagger，可以让一组元素以精确的时间差依次进出，营造层次分明的节奏感。</p>
+    <div class="hint">点击右上角 <b>汉堡按钮</b> 体验全屏菜单的 stagger 进出效果</div>
+  </main>
+
+  <!-- 全屏遮罩菜单 -->
+  <nav class="overlay" id="overlay">
+    <ul class="menu-list">
+      <li class="menu-item"><a href="#"><span class="index">01</span>首页</a></li>
+      <li class="menu-item"><a href="#"><span class="index">02</span>作品集</a></li>
+      <li class="menu-item"><a href="#"><span class="index">03</span>服务能力</a></li>
+      <li class="menu-item"><a href="#"><span class="index">04</span>团队介绍</a></li>
+      <li class="menu-item"><a href="#"><span class="index">05</span>博客文章</a></li>
+      <li class="menu-item"><a href="#"><span class="index">06</span>联系我们</a></li>
+    </ul>
+  </nav>
+
+  <!-- GSAP 核心库（仅核心，无需额外插件） -->
+  <script src="../lib/gsap.min.js"></script>
+  <script>
+    // 抓取关键元素
+    const menuBtn = document.getElementById("menuBtn");
+    const overlay = document.getElementById("overlay");
+    const items = gsap.utils.toArray(".menu-item a"); // 6 个菜单项的链接
+
+    let isOpen = false;   // 当前菜单是否展开
+    let busy = false;     // 动画进行中标记，防止重复点击打断
+
+    // 设置菜单项的初始状态：透明 + 向下位移，等待依次滑入
+    gsap.set(items, { autoAlpha: 0, y: 40 });
+
+    // 构建一条可复用的 Timeline：默认暂停，打开时正放、关闭时反放
+    const tl = gsap.timeline({
+      paused: true,
+      onComplete: () => { busy = false; },        // 打开动画结束
+      onReverseComplete: () => {                  // 关闭动画结束
+        overlay.style.visibility = "hidden";      // 彻底隐藏遮罩，恢复背景可交互
+        busy = false;
+      }
+    });
+
+    tl
+      // 第一步：遮罩从顶部裁切展开（clip-path 由上方收起到全屏）
+      .fromTo(overlay,
+        { clipPath: "inset(0% 0% 100% 0%)" },     // 起点：只露出顶部一条缝（即完全收起）
+        { clipPath: "inset(0% 0% 0% 0%)", duration: 0.6, ease: "power3.inOut" }
+      )
+      // 第二步：6 个菜单项自上而下 stagger 错开滑入（位移 + 透明度）
+      .to(items, {
+        autoAlpha: 1,
+        y: 0,
+        duration: 0.5,
+        ease: "power3.out",
+        stagger: 0.08          // 每项间隔 0.08s，形成依次进入的节奏
+      }, "-=0.25");            // 与遮罩展开尾段重叠，衔接更顺滑
+
+    // 点击按钮：根据当前状态正放或反放 Timeline
+    menuBtn.addEventListener("click", () => {
+      if (busy) return;        // 动画进行中忽略点击
+      busy = true;
+      isOpen = !isOpen;
+      menuBtn.classList.toggle("open", isOpen);
+
+      if (isOpen) {
+        overlay.style.visibility = "visible"; // 先显示遮罩再正放动画
+        tl.play();
+        // 反向时 GSAP 会自动把菜单项倒序退出（stagger 反转）
+      } else {
+        tl.reverse();          // 反放：菜单项反向依次退出后遮罩收起
+      }
+    });
+  </script>
+</body>
+</html>

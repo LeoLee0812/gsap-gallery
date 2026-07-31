@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ScrollSmoother 平滑滚动 + 视差</title>
+<style>
+  /* 全局重置与暗色主题变量 */
+  :root {
+    --bg: #0d1117;
+    --text: #e6edf3;
+    --accent: #58e6a8;
+    --card: #161b22;
+    --border: #30363d;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+    overflow-x: hidden;
+  }
+
+  /* ScrollSmoother 必须的包裹结构 */
+  #smooth-wrapper { overflow: hidden; }
+  #smooth-content { overflow: visible; width: 100%; }
+
+  /* 每个滚动区块占满视口，居中放置内容 */
+  .section {
+    position: relative;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 8vh 6vw;
+    overflow: hidden;
+  }
+
+  /* 主标题层 —— 视差移动最慢，营造背景纵深 */
+  .hero-title {
+    font-size: clamp(2.5rem, 9vw, 7rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+    text-align: center;
+    background: linear-gradient(120deg, var(--accent), var(--text));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .hero-sub {
+    margin-top: 1.5rem;
+    font-size: clamp(1rem, 2.4vw, 1.4rem);
+    color: #8b949e;
+    text-align: center;
+    max-width: 36ch;
+  }
+
+  /* 漂浮的色块装饰，分布在视口各处，用 data-speed 制造层次 */
+  .blob {
+    position: absolute;
+    border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%;
+    filter: blur(2px);
+    opacity: 0.85;
+    pointer-events: none;
+  }
+  .blob-a { width: 220px; height: 220px; top: 12%; left: 8%;
+    background: radial-gradient(circle at 30% 30%, var(--accent), #2ea884); }
+  .blob-b { width: 160px; height: 160px; top: 60%; right: 12%;
+    background: radial-gradient(circle at 30% 30%, #4f8cff, #1f4fb8); }
+  .blob-c { width: 120px; height: 120px; bottom: 14%; left: 18%;
+    background: radial-gradient(circle at 30% 30%, #ff6b9d, #b83b6b); }
+
+  /* 内容卡片网格 */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1.5rem;
+    width: 100%;
+    max-width: 960px;
+    margin-top: 2rem;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 2rem 1.5rem;
+    will-change: transform;
+  }
+  .card h3 { font-size: 1.25rem; margin-bottom: 0.6rem; }
+  .card h3 span { color: var(--accent); }
+  .card p { color: #8b949e; font-size: 0.95rem; line-height: 1.6; }
+
+  /* 区块小标题 */
+  .label {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--accent);
+    margin-bottom: 1rem;
+  }
+  .section h2 {
+    font-size: clamp(1.8rem, 5vw, 3.2rem);
+    text-align: center;
+    font-weight: 700;
+  }
+
+  /* 顶部固定提示 */
+  .hint {
+    position: fixed;
+    top: 1.2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    font-size: 0.8rem;
+    color: #8b949e;
+    background: rgba(22, 27, 34, 0.8);
+    border: 1px solid var(--border);
+    padding: 0.5rem 1rem;
+    border-radius: 999px;
+    backdrop-filter: blur(8px);
+  }
+
+  /* 装饰性细线 */
+  .deco-line {
+    position: absolute;
+    width: 1px;
+    height: 40vh;
+    background: linear-gradient(var(--accent), transparent);
+    opacity: 0.4;
+  }
+</style>
+</head>
+<body>
+
+<div class="hint">滚动体验惯性平滑 + 多层视差</div>
+
+<!-- ScrollSmoother 要求：外层 wrapper 包裹 content -->
+<div id="smooth-wrapper">
+  <div id="smooth-content">
+
+    <!-- 第一屏：标题视差，各层 data-speed 不同 -->
+    <section class="section">
+      <div class="blob blob-a" data-speed="0.8"></div>
+      <div class="blob blob-b" data-speed="1.4"></div>
+      <div class="blob blob-c" data-speed="1.15"></div>
+      <div class="deco-line" style="left: 30%;" data-speed="1.3"></div>
+      <div class="deco-line" style="right: 28%;" data-speed="0.7"></div>
+
+      <!-- 标题移动最慢（0.85），副标题用 data-lag 产生延迟拖尾 -->
+      <h1 class="hero-title" data-speed="0.85">惯性滚动<br />与深度视差</h1>
+      <p class="hero-sub" data-lag="0.4">ScrollSmoother 让页面像有重量一样平滑滑动，
+        不同图层以不同速度移动，错落出三维纵深。</p>
+    </section>
+
+    <!-- 第二屏：卡片网格，每张卡片 data-lag 不同形成错落跟随 -->
+    <section class="section">
+      <div class="blob blob-b" style="top: 8%; left: 6%;" data-speed="1.25"></div>
+      <div class="blob blob-c" style="top: auto; bottom: 10%; right: 14%;" data-speed="0.75"></div>
+
+      <p class="label" data-speed="1.1">层次错落</p>
+      <h2 data-speed="0.95">速度决定了远近</h2>
+
+      <div class="grid">
+        <div class="card" data-lag="0.1">
+          <h3><span>data-speed</span></h3>
+          <p>控制元素相对滚动的移动倍率。小于 1 走得慢，显得更远；大于 1 走得快，显得更近。</p>
+        </div>
+        <div class="card" data-lag="0.25">
+          <h3><span>data-lag</span></h3>
+          <p>让元素以延迟跟随滚动，松手后还会缓缓追上来，产生柔软的拖尾质感。</p>
+        </div>
+        <div class="card" data-lag="0.4">
+          <h3><span>smooth</span></h3>
+          <p>设为 1.5 秒，把每一次滚动转化为带惯性的缓动，告别生硬的逐帧跳动。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 第三屏：收尾 -->
+    <section class="section">
+      <div class="blob blob-a" style="top: 20%; right: 10%; left: auto;" data-speed="1.3"></div>
+      <div class="deco-line" style="left: 50%; height: 50vh;" data-speed="0.6"></div>
+
+      <p class="label" data-lag="0.2">深度感</p>
+      <h2 class="hero-title" data-speed="0.9" style="font-size: clamp(2rem, 7vw, 5rem);">
+        滚动即层次
+      </h2>
+      <p class="hero-sub" data-lag="0.5">把多层 data-speed 叠加在一起，
+        平面页面便有了呼吸与纵深。</p>
+    </section>
+
+  </div>
+</div>
+
+<!-- GSAP 核心与所需插件 -->
+<script src="../lib/gsap.min.js"></script>
+<script src="../lib/ScrollTrigger.min.js"></script>
+<script src="../lib/ScrollSmoother.min.js"></script>
+<script>
+  // 注册插件
+  gsap.registerPlugin(ScrollTrigger, ScrollSmoother);
+
+  // 创建平滑滚动实例
+  // smooth: 滚动缓动时长（秒）；effects: 开启 data-speed / data-lag 视差效果
+  ScrollSmoother.create({
+    smooth: 1.5,
+    effects: true,
+    normalizeScroll: true, // 统一移动端与桌面端滚动行为
+  });
+</script>
+</body>
+</html>

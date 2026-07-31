@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>无缝循环跑马灯 · GSAP</title>
+<style>
+  /* 暗色主题变量 */
+  :root {
+    --bg: #0d1117;
+    --text: #e6edf3;
+    --accent: #58e6a8;
+    --chip: #161b22;
+    --border: #30363d;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 28px;
+    overflow-x: hidden;
+  }
+
+  .heading {
+    text-align: center;
+    margin-bottom: 12px;
+  }
+  .heading h1 {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+  .heading p {
+    margin-top: 8px;
+    font-size: 14px;
+    color: #8b949e;
+  }
+  .heading .accent { color: var(--accent); }
+
+  /* 跑马灯外层：隐藏溢出，两侧加渐变遮罩，让进出更柔和 */
+  .marquee {
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
+            mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
+  }
+
+  /* 轨道：横向排布所有胶囊，整体被 GSAP 平移 */
+  .track {
+    display: flex;
+    width: max-content;
+    gap: 18px;
+    will-change: transform;
+  }
+
+  /* 文字胶囊 */
+  .chip {
+    flex: 0 0 auto;
+    padding: 12px 24px;
+    background: var(--chip);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 16px;
+    font-weight: 600;
+    white-space: nowrap;
+    color: var(--text);
+    transition: border-color 0.25s, color 0.25s;
+  }
+  .chip:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+</style>
+</head>
+<body>
+
+  <div class="heading">
+    <h1>合作伙伴 · <span class="accent">技术栈</span></h1>
+    <p>无缝循环跑马灯 · 鼠标悬停减速 · 两行反向滚动</p>
+  </div>
+
+  <!-- 第一行：向左滚动 -->
+  <div class="marquee">
+    <div class="track" data-direction="left"></div>
+  </div>
+
+  <!-- 第二行：向右滚动 -->
+  <div class="marquee">
+    <div class="track" data-direction="right"></div>
+  </div>
+
+  <script src="../lib/gsap.min.js"></script>
+  <script>
+    // 用于填充胶囊的标签内容
+    const LABELS = [
+      "React", "GSAP", "Swift", "TypeScript", "Vue",
+      "Rust", "Figma", "Next.js", "WebGL", "Tailwind"
+    ];
+
+    // 生成一份胶囊节点片段
+    function buildChips() {
+      const frag = document.createDocumentFragment();
+      LABELS.forEach((name) => {
+        const chip = document.createElement("div");
+        chip.className = "chip";
+        chip.textContent = name;
+        frag.appendChild(chip);
+      });
+      return frag;
+    }
+
+    // 为单条轨道创建无缝循环动画
+    function setupMarquee(track) {
+      const direction = track.dataset.direction; // "left" 或 "right"
+
+      // 关键：把内容复制一份拼接，确保滚动一份宽度后能无缝接上后半份
+      track.appendChild(buildChips()); // 第一份
+      track.appendChild(buildChips()); // 第二份（副本），用于衔接
+
+      // 一份内容的宽度 = 轨道总宽的一半（含两份之间的 gap）
+      // 用 scrollWidth 一半减去一个 gap 更精确，这里直接取半宽，
+      // 因为两份完全相同，平移恰好半宽即可首尾对齐看不出接缝
+      const trackStyle = getComputedStyle(track);
+      const gap = parseFloat(trackStyle.columnGap || trackStyle.gap || 18);
+      const halfWidth = (track.scrollWidth - gap) / 2 + gap; // 一份内容宽度 + 一个间隙
+
+      // 起始 x：向左滚动从 0 开始，向右滚动则从 -halfWidth 开始
+      const fromX = direction === "left" ? 0 : -halfWidth;
+      const toX = direction === "left" ? -halfWidth : 0;
+
+      // 速度恒定：根据宽度计算时长，保证两行视觉速度一致
+      const SPEED = 70; // 像素/秒
+      const duration = halfWidth / SPEED;
+
+      const tween = gsap.fromTo(track,
+        { x: fromX },
+        {
+          x: toX,
+          duration: duration,
+          ease: "none",   // 线性匀速，无缝循环的关键
+          repeat: -1       // 无限循环
+        }
+      );
+
+      // 鼠标悬停减速（放慢到 0.25 倍速），移开恢复
+      const marquee = track.closest(".marquee");
+      marquee.addEventListener("mouseenter", () => {
+        gsap.to(tween, { timeScale: 0.25, duration: 0.4, overwrite: true });
+      });
+      marquee.addEventListener("mouseleave", () => {
+        gsap.to(tween, { timeScale: 1, duration: 0.4, overwrite: true });
+      });
+    }
+
+    // 初始化两行跑马灯
+    document.querySelectorAll(".track").forEach(setupMarquee);
+  </script>
+
+</body>
+</html>

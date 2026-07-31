@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>磁吸按钮 + 自定义跟随光标</title>
+<style>
+  /* 暗色主题基础变量 */
+  :root {
+    --bg: #0d1117;
+    --text: #e6edf3;
+    --accent: #58e6a8;
+    --btn: #161b22;
+    --border: #30363d;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  /* 隐藏系统默认光标，全程用自定义光标元素替代 */
+  html, body {
+    cursor: none;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 48px;
+    overflow: hidden;
+  }
+
+  /* 标题区 */
+  .hero {
+    text-align: center;
+    pointer-events: none; /* 标题不参与交互，避免遮挡 */
+  }
+  .hero h1 {
+    font-size: clamp(28px, 5vw, 48px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .hero h1 span { color: var(--accent); }
+  .hero p {
+    margin-top: 12px;
+    color: #8b949e;
+    font-size: 15px;
+  }
+
+  /* 磁吸按钮容器：横向排列 */
+  .actions {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  /* 磁吸按钮本体 */
+  .magnetic {
+    position: relative;
+    padding: 16px 36px;
+    background: var(--btn);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: none; /* 按钮上也隐藏系统光标 */
+    will-change: transform; /* 提示浏览器为变换创建合成层 */
+    user-select: none;
+  }
+  /* 主按钮用强调色描边突出 */
+  .magnetic.primary {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  /* 按钮内文字单独包一层，便于做"二级磁吸"位移 */
+  .magnetic .label {
+    display: inline-block;
+    will-change: transform;
+  }
+
+  /* 自定义圆形光标 */
+  .cursor {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--accent);
+    pointer-events: none; /* 光标本身不拦截鼠标事件 */
+    z-index: 9999;
+    /* 用 translate(-50%,-50%) 让圆心对准鼠标点 */
+    transform: translate(-50%, -50%);
+    mix-blend-mode: difference; /* 混合模式让光标在不同背景下都清晰可见 */
+    will-change: transform;
+  }
+
+  .footer-tip {
+    position: fixed;
+    bottom: 24px;
+    color: #8b949e;
+    font-size: 13px;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+  <!-- 自定义光标元素 -->
+  <div class="cursor" id="cursor"></div>
+
+  <div class="hero">
+    <h1>磁吸交互 <span>Magnetic</span></h1>
+    <p>移动鼠标靠近按钮，感受吸附与光标缩放</p>
+  </div>
+
+  <div class="actions">
+    <button class="magnetic primary"><span class="label">查看作品</span></button>
+    <button class="magnetic"><span class="label">关于我</span></button>
+    <button class="magnetic"><span class="label">联系方式</span></button>
+  </div>
+
+  <div class="footer-tip">用 GSAP quickTo 实现高性能缓动跟随</div>
+
+  <script src="../lib/gsap.min.js"></script>
+  <script>
+    /* ========== 1. 自定义光标平滑跟随 ========== */
+    const cursor = document.getElementById("cursor");
+
+    /*
+     * gsap.quickTo 返回一个高性能的"补间函数"，
+     * 反复调用同一个目标属性时复用同一条 tween，避免每次 mousemove 都新建动画。
+     * duration 控制缓动时长，ease 用 power3 让跟随有自然的减速感。
+     */
+    const setCursorX = gsap.quickTo(cursor, "x", { duration: 0.5, ease: "power3" });
+    const setCursorY = gsap.quickTo(cursor, "y", { duration: 0.5, ease: "power3" });
+
+    // 监听鼠标移动，驱动光标缓动跟随
+    window.addEventListener("mousemove", (e) => {
+      setCursorX(e.clientX);
+      setCursorY(e.clientY);
+    });
+
+    /* ========== 2. 磁吸按钮 ========== */
+    const buttons = document.querySelectorAll(".magnetic");
+    // 磁吸强度：值越大，按钮跟随鼠标的幅度越大
+    const STRENGTH = 0.4;
+    // 内部文字的二级磁吸更强一点，制造层次感
+    const LABEL_STRENGTH = 0.6;
+
+    buttons.forEach((btn) => {
+      const label = btn.querySelector(".label");
+
+      // 为每个按钮和其文字分别创建 quickTo，复用 tween 保证性能
+      const moveBtnX = gsap.quickTo(btn, "x", { duration: 0.4, ease: "power3" });
+      const moveBtnY = gsap.quickTo(btn, "y", { duration: 0.4, ease: "power3" });
+      const moveLabelX = gsap.quickTo(label, "x", { duration: 0.4, ease: "power3" });
+      const moveLabelY = gsap.quickTo(label, "y", { duration: 0.4, ease: "power3" });
+
+      // 鼠标在按钮范围内移动：计算鼠标相对按钮中心的偏移，按强度吸附
+      btn.addEventListener("mousemove", (e) => {
+        const rect = btn.getBoundingClientRect();
+        // 鼠标相对按钮中心的距离（dx, dy）
+        const dx = e.clientX - (rect.left + rect.width / 2);
+        const dy = e.clientY - (rect.top + rect.height / 2);
+        moveBtnX(dx * STRENGTH);
+        moveBtnY(dy * STRENGTH);
+        moveLabelX(dx * LABEL_STRENGTH);
+        moveLabelY(dy * LABEL_STRENGTH);
+      });
+
+      // 鼠标进入：自定义光标放大并变色（变为透明描边圈，凸显"吸附"状态）
+      btn.addEventListener("mouseenter", () => {
+        gsap.to(cursor, {
+          scale: 2.6,
+          backgroundColor: "rgba(88, 230, 168, 0.0)",
+          borderWidth: 2,
+          borderStyle: "solid",
+          borderColor: "#58e6a8",
+          duration: 0.3,
+          ease: "power2.out",
+        });
+      });
+
+      // 鼠标离开：按钮和文字平滑复位到原位，光标恢复原状
+      btn.addEventListener("mouseleave", () => {
+        // 复位时复用同一组 quickTo（power3 缓动），归零即顺滑回到中心
+        moveBtnX(0);
+        moveBtnY(0);
+        moveLabelX(0);
+        moveLabelY(0);
+        gsap.to(cursor, {
+          scale: 1,
+          backgroundColor: "#58e6a8",
+          borderWidth: 0,
+          duration: 0.3,
+          ease: "power2.out",
+        });
+      });
+    });
+  </script>
+</body>
+</html>

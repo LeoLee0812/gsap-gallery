@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>骨架屏加载 · GSAP</title>
+<style>
+  /* 暗色主题基础样式 */
+  :root {
+    --bg: #0d1117;
+    --text: #e6edf3;
+    --accent: #58e6a8;
+    --card: #161b22;
+    --border: #30363d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px;
+    gap: 28px;
+  }
+  h1 {
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+  /* 卡片容器：骨架与真实内容叠放在同一容器内 */
+  .card {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 22px;
+  }
+
+  /* ===== 骨架层 ===== */
+  .skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  /* 单个骨架块：灰色底色 + 高光渐变叠加，靠 backgroundPosition 扫光 */
+  .sk {
+    position: relative;
+    overflow: hidden;
+    border-radius: 8px;
+    /* 第一层为高光渐变（可移动），第二层为灰色底色 */
+    background-image:
+      linear-gradient(
+        90deg,
+        rgba(255,255,255,0) 0%,
+        rgba(255,255,255,0.10) 50%,
+        rgba(255,255,255,0) 100%
+      ),
+      linear-gradient(#21262d, #21262d);
+    background-repeat: no-repeat;
+    background-size: 60% 100%, 100% 100%;
+    background-position: -150% 0, 0 0;
+  }
+  .sk-head { display: flex; align-items: center; gap: 14px; }
+  .sk-avatar { width: 52px; height: 52px; border-radius: 50%; flex-shrink: 0; }
+  .sk-meta { flex: 1; display: flex; flex-direction: column; gap: 9px; }
+  .sk-title { height: 16px; width: 60%; }
+  .sk-sub { height: 12px; width: 40%; }
+  .sk-line { height: 12px; }
+  .sk-line.w90 { width: 90%; }
+  .sk-line.w100 { width: 100%; }
+  .sk-line.w70 { width: 70%; }
+  .sk-image { height: 160px; border-radius: 10px; }
+
+  /* ===== 真实内容层 ===== */
+  .content {
+    position: absolute;
+    inset: 0;
+    padding: 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    opacity: 0;            /* 初始隐藏，由 timeline 控制淡入 */
+    pointer-events: none;
+  }
+  .c-head { display: flex; align-items: center; gap: 14px; }
+  .c-avatar {
+    width: 52px; height: 52px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), #2da06f);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; color: #0d1117; font-size: 20px;
+    flex-shrink: 0;
+  }
+  .c-title { font-size: 17px; font-weight: 600; }
+  .c-sub { font-size: 13px; color: #8b949e; margin-top: 3px; }
+  .c-text { font-size: 14px; line-height: 1.6; color: #c9d1d9; }
+  .c-image {
+    height: 160px; border-radius: 10px;
+    background: linear-gradient(135deg, #1f6feb, #58e6a8);
+    display: flex; align-items: center; justify-content: center;
+    color: #0d1117; font-weight: 600; font-size: 15px;
+  }
+
+  /* 重新加载按钮 */
+  .btn {
+    background: var(--accent);
+    color: #0d1117;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 22px;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: transform 0.15s, opacity 0.15s;
+  }
+  .btn:hover { transform: translateY(-2px); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+</style>
+</head>
+<body>
+  <h1>骨架屏加载</h1>
+
+  <div class="card">
+    <!-- 骨架层 -->
+    <div class="skeleton" id="skeleton">
+      <div class="sk-head">
+        <div class="sk sk-avatar"></div>
+        <div class="sk-meta">
+          <div class="sk sk-title"></div>
+          <div class="sk sk-sub"></div>
+        </div>
+      </div>
+      <div class="sk sk-line w100"></div>
+      <div class="sk sk-line w90"></div>
+      <div class="sk sk-line w70"></div>
+      <div class="sk sk-image"></div>
+    </div>
+
+    <!-- 真实内容层 -->
+    <div class="content" id="content">
+      <div class="c-head">
+        <div class="c-avatar">L</div>
+        <div>
+          <div class="c-title">Leo Lee</div>
+          <div class="c-sub">前端动效工程师 · 5 分钟前</div>
+        </div>
+      </div>
+      <p class="c-text">
+        骨架屏在内容加载完成前给用户清晰的结构预期，配合从左到右扫过的高光，
+        让等待过程显得更流畅、更有质感。
+      </p>
+      <div class="c-image">封面图片占位</div>
+    </div>
+  </div>
+
+  <button class="btn" id="reload">重新加载</button>
+
+  <!-- GSAP 核心 -->
+  <script src="../lib/gsap.min.js"></script>
+  <script>
+    const skeleton = document.getElementById("skeleton");
+    const content = document.getElementById("content");
+    const reloadBtn = document.getElementById("reload");
+    const skBlocks = gsap.utils.toArray(".sk");
+    const contentItems = gsap.utils.toArray("#content > *");
+
+    let shimmerTween;   // 持续循环的扫光动画
+    let switchTl;       // 骨架→内容的切换时间线
+
+    // 启动 shimmer：通过移动每个骨架块 ::after 的 backgroundPosition 实现高光横扫
+    function startShimmer() {
+      shimmerTween = gsap.to(skBlocks, {
+        // 第一层高光从左侧外（-150%）扫到右侧外（250%），第二层底色保持不动
+        backgroundPosition: "250% 0, 0 0",
+        duration: 1.2,
+        repeat: -1,
+        ease: "none",
+        stagger: { each: 0.08 } // 不同块之间略微错峰，更自然
+      });
+    }
+
+    // 加载流程：显示骨架并扫光，几秒后切换到真实内容
+    function load() {
+      // 重置状态
+      reloadBtn.disabled = true;
+      if (switchTl) switchTl.kill();
+      if (shimmerTween) shimmerTween.kill();
+
+      gsap.set(skeleton, { display: "flex", opacity: 1 });
+      gsap.set(content, { opacity: 1, pointerEvents: "none" });
+      gsap.set(contentItems, { opacity: 0, y: 16 });
+      // 骨架块伪元素的扫光由下面的 CSS 动画类承担，这里用 GSAP 控制内嵌高光
+      gsap.set(skBlocks, { backgroundPosition: "-150% 0, 0 0" });
+
+      startShimmer();
+
+      // 切换时间线：模拟约 2.6 秒的加载耗时
+      switchTl = gsap.timeline({ delay: 2.6 });
+      switchTl
+        // 骨架整体淡出
+        .to(skeleton, {
+          opacity: 0,
+          duration: 0.4,
+          ease: "power2.out",
+          onComplete: () => {
+            gsap.set(skeleton, { display: "none" });
+            if (shimmerTween) shimmerTween.kill();
+          }
+        })
+        // 真实内容 stagger 淡入填充
+        .to(contentItems, {
+          opacity: 1,
+          y: 0,
+          duration: 0.5,
+          ease: "power2.out",
+          stagger: 0.12
+        }, "-=0.1")
+        .add(() => {
+          content.style.pointerEvents = "auto";
+          reloadBtn.disabled = false;
+        });
+    }
+
+    reloadBtn.addEventListener("click", load);
+    load();
+  </script>
+</body>
+</html>

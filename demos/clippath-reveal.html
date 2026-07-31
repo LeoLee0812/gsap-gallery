@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>滚动图片遮罩揭示</title>
+<style>
+  /* 暗色主题基础样式 */
+  :root {
+    --bg: #0d1117;
+    --text: #e6edf3;
+    --accent: #58e6a8;
+    --card: #161b22;
+    --border: #30363d;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+    line-height: 1.6;
+  }
+  /* 顶部标题区 */
+  header {
+    min-height: 60vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 2rem;
+  }
+  header h1 {
+    font-size: clamp(1.8rem, 5vw, 3rem);
+    margin-bottom: 1rem;
+  }
+  header p {
+    color: #8b949e;
+    max-width: 480px;
+  }
+  header .accent { color: var(--accent); }
+  /* 图块网格 */
+  .gallery {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 1.5rem 30vh;
+    display: grid;
+    gap: 4rem;
+  }
+  /* 单个图块卡片：用 CSS 渐变充当图片 */
+  .tile {
+    position: relative;
+    height: 380px;
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--card);
+    /* 初始遮挡状态，避免动画前闪现 */
+    clip-path: inset(100% 0 0 0);
+  }
+  .tile .image {
+    position: absolute;
+    inset: 0;
+    border-radius: 14px;
+  }
+  /* 几种不同的渐变当作不同图片 */
+  .img-1 { background: linear-gradient(135deg, #1f6feb, #58e6a8); }
+  .img-2 { background: linear-gradient(135deg, #db61a2, #ff7b72); }
+  .img-3 { background: linear-gradient(135deg, #a371f7, #1f6feb); }
+  .img-4 { background: linear-gradient(135deg, #e3b341, #f0883e); }
+  /* 图块上的文字标签 */
+  .tile .label {
+    position: absolute;
+    left: 1.5rem;
+    bottom: 1.5rem;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #fff;
+    text-shadow: 0 2px 8px rgba(0,0,0,.4);
+    z-index: 2;
+  }
+  .tile .index {
+    position: absolute;
+    right: 1.5rem;
+    top: 1.5rem;
+    font-size: .85rem;
+    letter-spacing: .15em;
+    color: rgba(255,255,255,.85);
+    z-index: 2;
+  }
+  footer {
+    text-align: center;
+    padding: 4rem 1rem;
+    color: #8b949e;
+    border-top: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>滚动<span class="accent">遮罩揭示</span></h1>
+    <p>向下滚动，每个图块在进入视口时通过 clip-path 像拉幕一样揭示出来，并伴随轻微缩放。</p>
+  </header>
+
+  <main class="gallery">
+    <div class="tile">
+      <div class="image img-1"></div>
+      <span class="index">01 / 04</span>
+      <span class="label">极光</span>
+    </div>
+    <div class="tile">
+      <div class="image img-2"></div>
+      <span class="index">02 / 04</span>
+      <span class="label">晚霞</span>
+    </div>
+    <div class="tile">
+      <div class="image img-3"></div>
+      <span class="index">03 / 04</span>
+      <span class="label">星云</span>
+    </div>
+    <div class="tile">
+      <div class="image img-4"></div>
+      <span class="index">04 / 04</span>
+      <span class="label">沙丘</span>
+    </div>
+  </main>
+
+  <footer>到底啦 · GSAP ScrollTrigger clip-path 揭示</footer>
+
+  <!-- GSAP 核心与 ScrollTrigger 插件 -->
+  <script src="../lib/gsap.min.js"></script>
+  <script src="../lib/ScrollTrigger.min.js"></script>
+  <script>
+    // 注册 ScrollTrigger 插件
+    gsap.registerPlugin(ScrollTrigger);
+
+    // 为每个图块创建独立的滚动揭示动画
+    gsap.utils.toArray(".tile").forEach((tile) => {
+      const image = tile.querySelector(".image");
+
+      // 图块整体：clip-path 从全遮挡拉到全显示（像拉幕）
+      gsap.from(tile, {
+        clipPath: "inset(100% 0 0 0)",   // 起始：底部完全遮挡
+        duration: 1.1,
+        ease: "power3.out",
+        scrollTrigger: {
+          trigger: tile,
+          start: "top 80%",              // 图块顶部到达视口 80% 处触发
+          toggleActions: "play none none reverse",
+        },
+      });
+
+      // 内部图片：轻微缩放，营造景深感
+      gsap.from(image, {
+        scale: 1.18,
+        duration: 1.4,
+        ease: "power3.out",
+        scrollTrigger: {
+          trigger: tile,
+          start: "top 80%",
+          toggleActions: "play none none reverse",
+        },
+      });
+    });
+  </script>
+</body>
+</html>

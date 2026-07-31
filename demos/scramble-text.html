@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>文字解码 · ScrambleText 实战</title>
+<style>
+/* 暗色主题基础变量 */
+:root {
+  --bg: #0d1117;          /* 背景色 */
+  --fg: #e6edf3;          /* 完成态文字色（白） */
+  --accent: #58e6a8;      /* 强调色（解码中） */
+  --muted: #6e7681;       /* 次要文字 */
+  --line: #21262d;        /* 边框线 */
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  /* 等宽字体优先，保证乱码闪动时宽度稳定 */
+  font-family: "SF Mono", "JetBrains Mono", Menlo, Consolas, "Courier New", monospace;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 48px;
+  padding: 32px;
+  /* 细微的扫描线 / 网格背景，增强黑客终端氛围 */
+  background-image:
+    radial-gradient(circle at 50% 0%, rgba(88, 230, 168, 0.06), transparent 60%),
+    linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 3px;
+}
+
+/* 顶部小标签：模拟终端提示符 */
+.tag {
+  font-size: 13px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.tag::before {
+  content: "> ";
+  color: var(--accent);
+}
+
+/* 解码文字主体 */
+#decoder {
+  max-width: 90vw;
+  text-align: center;
+  font-size: clamp(22px, 5vw, 48px);
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 1px;
+  min-height: 1.4em;
+  /* 解码进行时使用强调色，配合发光阴影 */
+  color: var(--accent);
+  text-shadow: 0 0 18px rgba(88, 230, 168, 0.45);
+  transition: color 0.4s ease, text-shadow 0.4s ease;
+}
+
+/* 解码完成态：变白、去掉发光 */
+#decoder.done {
+  color: var(--fg);
+  text-shadow: none;
+}
+
+/* 闪烁光标 */
+#decoder::after {
+  content: "_";
+  color: var(--accent);
+  animation: blink 1s step-end infinite;
+}
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+/* 控制区 */
+.controls {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+button {
+  font-family: inherit;
+  font-size: 14px;
+  letter-spacing: 1px;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 11px 22px;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+button:hover {
+  background: var(--accent);
+  color: var(--bg);
+  box-shadow: 0 0 22px rgba(88, 230, 168, 0.5);
+}
+button:active { transform: translateY(1px); }
+
+/* 进度小点：显示当前播放到第几句 */
+.dots { display: flex; gap: 8px; }
+.dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--line);
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+.dot.active {
+  background: var(--accent);
+  box-shadow: 0 0 10px rgba(88, 230, 168, 0.7);
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+}
+</style>
+</head>
+<body>
+
+  <div class="tag">decrypting transmission</div>
+
+  <!-- 解码文字的承载元素 -->
+  <div id="decoder">INITIALIZING...</div>
+
+  <div class="controls">
+    <button id="redecode">↻ 重新解码</button>
+    <div class="dots" id="dots"></div>
+  </div>
+
+  <div class="hint">每句解码完成后自动切换 · 点击按钮可重放当前句</div>
+
+  <!-- GSAP 核心 -->
+  <script src="../lib/gsap.min.js"></script>
+  <!-- ScrambleText 插件 -->
+  <script src="../lib/ScrambleTextPlugin.min.js"></script>
+
+  <script>
+    // 注册插件（必须）
+    gsap.registerPlugin(ScrambleTextPlugin);
+
+    // 需要循环解码的句子，中英文混排
+    const phrases = [
+      { text: "ACCESS GRANTED",        chars: "upperCase" },        // 纯英文 + 大写乱码集
+      { text: "正在突破防火墙…",        chars: "上下左右前后内外攻防破解码" }, // 中文，乱码集用相关汉字
+      { text: "SYSTEM ONLINE 系统就绪", chars: "01#$%&XO" },          // 中英混排 + 符号乱码集
+      { text: "欢迎来到矩阵世界",        chars: "矩阵代码数据流量子位元" },     // 中文
+      { text: "HELLO, WORLD! 你好世界",  chars: "01" },               // 经典二进制乱码感
+    ];
+
+    const decoder = document.getElementById("decoder");
+    const dotsBox = document.getElementById("dots");
+    let index = 0;          // 当前句索引
+    let autoTimer = null;    // 自动切换定时器
+
+    // 生成底部进度点
+    phrases.forEach(() => {
+      const d = document.createElement("span");
+      d.className = "dot";
+      dotsBox.appendChild(d);
+    });
+    const dots = [...dotsBox.children];
+
+    // 更新进度点高亮
+    function syncDots() {
+      dots.forEach((d, i) => d.classList.toggle("active", i === index));
+    }
+
+    // 执行一次解码动画
+    function decode(autoAdvance = true) {
+      clearTimeout(autoTimer);
+      const cur = phrases[index];
+
+      // 解码进行时移除完成态样式（恢复强调色 + 发光）
+      decoder.classList.remove("done");
+      syncDots();
+
+      gsap.to(decoder, {
+        duration: 2,
+        scrambleText: {
+          text: cur.text,          // 最终正确文字
+          chars: cur.chars,        // 乱码字符集
+          revealDelay: 0.5,        // 先纯乱码闪动一段时间再逐字揭示
+          speed: 0.35,             // 乱码刷新速度（越大越快）
+          tweenLength: false,      // 不在长度间补间，直接按目标长度乱码
+        },
+        ease: "none",
+        onComplete() {
+          // 解码完成：文字变白
+          decoder.classList.add("done");
+          if (autoAdvance) {
+            // 停留片刻后切到下一句
+            autoTimer = setTimeout(() => {
+              index = (index + 1) % phrases.length;
+              decode(true);
+            }, 1800);
+          }
+        },
+      });
+    }
+
+    // 手动重新解码：重放当前句，不自动前进
+    document.getElementById("redecode").addEventListener("click", () => {
+      decode(false);
+    });
+
+    // 页面载入后启动
+    decode(true);
+  </script>
+</body>
+</html>
