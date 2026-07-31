@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>transform vs 布局属性 · 卡顿从哪来</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh; padding: 34px 24px 60px;
+    display: flex; flex-direction: column; align-items: center; gap: 20px;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .sub { font-size: 13.5px; opacity: .55; text-align: center; max-width: 760px; line-height: 1.8; margin-top: -12px; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; width: min(1080px, 100%); }
+  .panel {
+    flex: 1 1 480px; background: #161b22; border: 1px solid #30363d;
+    border-radius: 16px; padding: 18px 20px;
+  }
+  .ptitle { font-size: 14px; font-weight: 700; margin-bottom: 3px; }
+  .ptitle.good { color: #58e6a8; }
+  .ptitle.bad { color: #f85149; }
+  .pdesc { font-size: 12px; opacity: .5; line-height: 1.6; margin-bottom: 12px; min-height: 48px; }
+  .field {
+    height: 220px; position: relative; overflow: hidden;
+    background: #0d1117; border: 1px solid #21262d; border-radius: 12px;
+  }
+  .item { position: absolute; border-radius: 6px; }
+  .fpsbar {
+    display: flex; align-items: center; gap: 10px; margin-top: 12px;
+    font-size: 12.5px; font-family: ui-monospace, Menlo, monospace;
+  }
+  .fpsnum { font-size: 20px; font-weight: 700; }
+  .fpsnum.ok { color: #58e6a8; }
+  .fpsnum.mid { color: #f0883e; }
+  .fpsnum.bad { color: #f85149; }
+  .spark { flex: 1; height: 34px; display: flex; align-items: flex-end; gap: 1px; }
+  .spark i { flex: 1; background: #30363d; display: block; min-height: 1px; }
+  .ctrls {
+    width: min(1080px, 100%); display: flex; gap: 10px; flex-wrap: wrap;
+    align-items: center; justify-content: center;
+  }
+  .ctrls button {
+    background: #161b22; color: #58e6a8; border: 1px solid #30363d;
+    border-radius: 9px; padding: 10px 20px; font-size: 14px; cursor: pointer; font-family: inherit;
+  }
+  .ctrls button.on { background: #58e6a8; color: #0d1117; }
+  .ctrls .count { font-size: 13px; opacity: .6; display: flex; align-items: center; gap: 8px; }
+  .ctrls input { accent-color: #58e6a8; width: 130px; }
+  table {
+    width: min(1080px, 100%); border-collapse: collapse; font-size: 13px;
+    background: #161b22; border: 1px solid #30363d; border-radius: 12px; overflow: hidden;
+  }
+  th, td { padding: 11px 14px; text-align: left; border-bottom: 1px solid #21262d; }
+  th { background: #0d1117; font-size: 12px; opacity: .6; font-weight: 500; }
+  tr:last-child td { border-bottom: 0; }
+  td.p { font-family: ui-monospace, Menlo, monospace; color: #58e6a8; }
+  td.p.no { color: #f85149; }
+  .tag {
+    display: inline-block; padding: 2px 8px; border-radius: 5px; font-size: 11px;
+  }
+  .tag.layout { background: rgba(248,81,73,.15); color: #f85149; }
+  .tag.paint { background: rgba(240,136,62,.15); color: #f0883e; }
+  .tag.comp { background: rgba(88,230,168,.15); color: #58e6a8; }
+  pre {
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    padding: 16px 20px; font-size: 12.5px; line-height: 1.75;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #8b949e; width: min(1080px, 100%); overflow-x: auto;
+  }
+  pre .k { color: #58e6a8; }
+  pre .c { color: #6e7681; }
+  pre .bad { color: #f85149; }
+  .note {
+    width: min(1080px, 100%); font-size: 13px; color: #8b949e; line-height: 1.9;
+    border-top: 1px solid #21262d; padding-top: 16px;
+  }
+  .note b { color: #58e6a8; }
+</style>
+</head>
+<body>
+  <h1>transform vs 布局属性</h1>
+  <p class="sub">
+    「动画为什么卡」——十次里有八次答案在这一页。两边做的是<b>视觉上完全一样的移动</b>，
+    左边用 <code>x/y</code>（transform），右边用 <code>left/top</code>（布局属性）。
+    把数量拉到 300 以上，差距就出来了。
+  </p>
+
+  <div class="row">
+    <div class="panel">
+      <div class="ptitle good">✅ x / y / scale / opacity</div>
+      <div class="pdesc">
+        走 <b>合成层（compositor）</b>，由 GPU 直接搬运已经画好的图层。
+        不触发重排、不触发重绘，浏览器主线程几乎不用干活。
+      </div>
+      <div class="field" id="fieldA"></div>
+      <div class="fpsbar">
+        <span class="fpsnum ok" id="fpsA">--</span>
+        <span style="opacity:.5">FPS</span>
+        <div class="spark" id="sparkA"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="ptitle bad">❌ left / top / width / height</div>
+      <div class="pdesc">
+        每改一次都要<b>重新计算布局（reflow）</b>，然后重绘。元素越多、层级越深，主线程负担越重，
+        一旦一帧算不完就掉帧。
+      </div>
+      <div class="field" id="fieldB"></div>
+      <div class="fpsbar">
+        <span class="fpsnum ok" id="fpsB">--</span>
+        <span style="opacity:.5">FPS</span>
+        <div class="spark" id="sparkB"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ctrls">
+    <button id="start" class="on">⏸ 暂停</button>
+    <div class="count">
+      元素数量 <input type="range" id="count" min="50" max="800" step="50" value="200">
+      <b id="countVal">200</b> ×2
+    </div>
+    <button id="heavy">加重负担（同时改宽高）</button>
+  </div>
+
+  <table>
+    <thead><tr><th>你想做的效果</th><th>该用</th><th>别用</th><th>浏览器要干的活</th></tr></thead>
+    <tbody>
+      <tr><td>左右上下移动</td><td class="p">x / y</td><td class="p no">left / top / margin</td><td><span class="tag comp">合成</span> vs <span class="tag layout">重排+重绘</span></td></tr>
+      <tr><td>放大缩小</td><td class="p">scale</td><td class="p no">width / height</td><td><span class="tag comp">合成</span> vs <span class="tag layout">重排+重绘</span></td></tr>
+      <tr><td>淡入淡出</td><td class="p">autoAlpha</td><td class="p no">display 切换</td><td><span class="tag comp">合成</span> vs <span class="tag layout">重排</span></td></tr>
+      <tr><td>百分比位移</td><td class="p">xPercent / yPercent</td><td class="p no">left: "50%"</td><td><span class="tag comp">合成</span> vs <span class="tag layout">重排</span></td></tr>
+      <tr><td>圆角 / 阴影变化</td><td class="p">—</td><td class="p">borderRadius / boxShadow</td><td><span class="tag paint">重绘</span>（可接受，但别用在几百个元素上）</td></tr>
+      <tr><td>颜色变化</td><td class="p">backgroundColor</td><td class="p">—</td><td><span class="tag paint">重绘</span>（不触发重排，代价中等）</td></tr>
+    </tbody>
+  </table>
+
+  <pre><span class="c">// ❌ 触发重排：每帧都要重新计算整个文档的布局</span>
+<span class="bad">gsap.to(box, { left: 400, top: 200, width: 300, duration: 1 });</span>
+
+<span class="c">// ✅ 只走合成层：GPU 搬运已有图层，主线程几乎不参与</span>
+gsap.to(box, { x: 400, y: 200, scaleX: 1.5, duration: 1 });
+
+<span class="c">// ✅ 淡出用 autoAlpha 而不是手动切 display</span>
+<span class="c">//    autoAlpha = opacity + visibility，透明时自动 visibility: hidden</span>
+<span class="c">//    好处：元素彻底不再拦截鼠标点击，又不像 display:none 那样触发重排</span>
+gsap.to(box, { autoAlpha: 0, duration: 0.4 });
+
+<span class="c">// 提前告诉浏览器「这个元素要动了，请单独提一个图层」</span>
+<span class="c">// 注意：只加在真正会动的元素上，滥用反而爆显存</span>
+.card { will-change: transform; }</pre>
+
+  <p class="note">
+    <b>为什么 GSAP 的 x/y 不是 left/top：</b>这是 GSAP 的刻意设计。
+    它把 <code>x</code> 编译成 <code>transform: translateX()</code>，天然走合成层。
+    很多人从 jQuery 迁过来习惯性写 <code>left</code>，性能就白扔了。<br>
+    <b>will-change 不是越多越好。</b>每个 will-change 元素都会被提升为独立图层，占显存。
+    在几百个元素上无脑加，反而比不加更卡。正确做法是<b>只加在确实会动的少数元素上</b>，
+    或者动画开始前用 JS 加、结束后移除。<br>
+    <b>实在必须动布局属性怎么办：</b>用 <b>Flip 插件</b>——它的思路是「先让 DOM 变成最终布局，再用 transform 把视觉位置倒推回起点做动画」，
+    这样既改了真实布局，动画过程又全程走 transform。
+  </p>
+
+<script src="../lib/gsap.min.js"></script>
+<script>
+  const fieldA = document.getElementById('fieldA');
+  const fieldB = document.getElementById('fieldB');
+
+  let running = true, heavy = false;
+  let itemsA = [], itemsB = [];
+
+  function build(n) {
+    fieldA.innerHTML = ''; fieldB.innerHTML = '';
+    gsap.killTweensOf('.item');
+    itemsA = []; itemsB = [];
+
+    for (let i = 0; i < n; i++) {
+      const hue = 150 + (i / n) * 110;
+      const size = 6 + (i % 5) * 2;
+
+      const a = document.createElement('div');
+      a.className = 'item';
+      a.style.cssText = `width:${size}px;height:${size}px;background:hsl(${hue} 70% 55%);left:0;top:0`;
+      fieldA.appendChild(a);
+      itemsA.push(a);
+
+      const b = document.createElement('div');
+      b.className = 'item';
+      b.style.cssText = `width:${size}px;height:${size}px;background:hsl(${hue} 70% 55%);left:0;top:0`;
+      fieldB.appendChild(b);
+      itemsB.push(b);
+    }
+    animate();
+  }
+
+  function animate() {
+    gsap.killTweensOf(itemsA.concat(itemsB));
+    const W = fieldA.clientWidth, H = fieldA.clientHeight;
+
+    itemsA.forEach((el, i) => {
+      const d = 1.4 + (i % 10) * 0.13;
+      // ✅ 只动 transform：走合成层
+      const vars = {
+        x: () => gsap.utils.random(0, W - 14),
+        y: () => gsap.utils.random(0, H - 14),
+        duration: d, ease: 'sine.inOut',
+        repeat: -1, yoyo: true, repeatRefresh: true,
+        delay: (i % 20) * 0.03
+      };
+      if (heavy) { vars.scale = () => gsap.utils.random(0.6, 1.8); }
+      gsap.to(el, vars);
+    });
+
+    itemsB.forEach((el, i) => {
+      const d = 1.4 + (i % 10) * 0.13;
+      // ❌ 动 left/top（以及 width/height）：每帧触发重排
+      const vars = {
+        left: () => gsap.utils.random(0, W - 14),
+        top: () => gsap.utils.random(0, H - 14),
+        duration: d, ease: 'sine.inOut',
+        repeat: -1, yoyo: true, repeatRefresh: true,
+        delay: (i % 20) * 0.03
+      };
+      if (heavy) {
+        vars.width = () => gsap.utils.random(6, 20);
+        vars.height = () => gsap.utils.random(6, 20);
+      }
+      gsap.to(el, vars);
+    });
+  }
+
+  // ---- 两侧各自的 FPS 采样 ----
+  // 单页面共享同一个主线程，所以这里测的是「整体帧率」，
+  // 但通过只运行一侧（暂停另一侧）能看出各自的开销差异
+  function makeFpsMeter(numId, sparkId) {
+    const spark = document.getElementById(sparkId);
+    for (let i = 0; i < 40; i++) spark.appendChild(document.createElement('i'));
+    const bars = spark.querySelectorAll('i');
+    let idx = 0;
+    return fps => {
+      const el = document.getElementById(numId);
+      el.textContent = fps;
+      el.className = 'fpsnum ' + (fps >= 55 ? 'ok' : fps >= 35 ? 'mid' : 'bad');
+      const bar = bars[idx % bars.length];
+      bar.style.height = Math.min(100, fps / 60 * 100) + '%';
+      bar.style.background = fps >= 55 ? '#58e6a8' : fps >= 35 ? '#f0883e' : '#f85149';
+      idx++;
+    };
+  }
+  const meterA = makeFpsMeter('fpsA', 'sparkA');
+  const meterB = makeFpsMeter('fpsB', 'sparkB');
+
+  let frames = 0, last = performance.now();
+  function tick(now) {
+    frames++;
+    if (now - last >= 400) {
+      const fps = Math.round(frames * 1000 / (now - last));
+      meterA(fps); meterB(fps);
+      frames = 0; last = now;
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  // ---- 控件 ----
+  const countInput = document.getElementById('count');
+  countInput.oninput = () => {
+    document.getElementById('countVal').textContent = countInput.value;
+    build(+countInput.value);
+  };
+
+  document.getElementById('start').onclick = e => {
+    running = !running;
+    e.target.textContent = running ? '⏸ 暂停' : '▶ 继续';
+    e.target.classList.toggle('on', running);
+    if (running) gsap.globalTimeline.play();
+    else gsap.globalTimeline.pause();
+  };
+
+  document.getElementById('heavy').onclick = e => {
+    heavy = !heavy;
+    e.target.classList.toggle('on', heavy);
+    e.target.textContent = heavy ? '✓ 已加重（宽高 + 缩放）' : '加重负担（同时改宽高）';
+    animate();
+  };
+
+  build(200);
+</script>
+</body>
+</html>

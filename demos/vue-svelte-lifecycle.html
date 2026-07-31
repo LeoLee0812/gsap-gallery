@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GSAP 在 Vue / Nuxt / Svelte 里的写法</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+    padding: 40px 24px 80px; line-height: 1.6;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; }
+  h1 { font-size: 25px; font-weight: 800; text-align: center; }
+  .sub { text-align: center; opacity: .55; font-size: 14px; margin: 10px auto 26px; max-width: 720px; line-height: 1.8; }
+  .tabs { display: flex; gap: 8px; justify-content: center; margin-bottom: 26px; flex-wrap: wrap; }
+  .tabs button {
+    background: #161b22; color: #8b949e; border: 1px solid #30363d;
+    border-radius: 9px; padding: 10px 22px; font-size: 14px; cursor: pointer; font-family: inherit;
+    transition: all .18s;
+  }
+  .tabs button.on { background: #58e6a8; color: #0d1117; border-color: #58e6a8; font-weight: 600; }
+  .pane { display: none; }
+  .pane.on { display: block; }
+  h2 {
+    font-size: 17px; margin: 30px 0 12px; padding-left: 11px;
+    border-left: 3px solid #58e6a8; font-weight: 700;
+  }
+  p.body { font-size: 14px; color: #8b949e; line-height: 1.95; margin-bottom: 14px; }
+  p.body b { color: #58e6a8; }
+  pre {
+    background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+    padding: 18px 22px; font-size: 12.8px; line-height: 1.8;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #c9d1d9; overflow-x: auto; margin-bottom: 8px;
+  }
+  pre.bad { border-color: rgba(248,81,73,.4); background: rgba(248,81,73,.05); }
+  pre.good { border-color: rgba(88,230,168,.35); background: rgba(88,230,168,.04); }
+  .k { color: #ff7b72; }
+  .s { color: #a5d6ff; }
+  .c { color: #6e7681; font-style: italic; }
+  .f { color: #d2a8ff; }
+  .v { color: #79c0ff; }
+  .t { color: #7ee787; }
+  .tagline {
+    font-size: 12px; font-weight: 700; margin-bottom: 6px;
+    display: inline-block; padding: 3px 10px; border-radius: 6px;
+  }
+  .tagline.bad { background: rgba(248,81,73,.15); color: #f85149; }
+  .tagline.good { background: rgba(88,230,168,.15); color: #58e6a8; }
+  .callout {
+    background: #161b22; border: 1px solid #30363d; border-left: 3px solid #f0883e;
+    border-radius: 10px; padding: 14px 18px; font-size: 13.5px; color: #8b949e;
+    line-height: 1.9; margin: 16px 0;
+  }
+  .callout b { color: #f0883e; }
+  table {
+    width: 100%; border-collapse: collapse; font-size: 13px; margin: 14px 0;
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px; overflow: hidden;
+  }
+  th, td { padding: 11px 14px; text-align: left; border-bottom: 1px solid #21262d; vertical-align: top; }
+  th { background: #0d1117; font-size: 12px; opacity: .6; font-weight: 500; }
+  tr:last-child td { border-bottom: 0; }
+  td code { color: #58e6a8; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>GSAP 在 Vue / Nuxt / Svelte 里的写法</h1>
+  <p class="sub">
+    React 有官方的 <code>useGSAP</code> hook 兜底，其他框架没有——但要做的事完全一样：
+    <b>在挂载后创建动画、在卸载前清理干净、把选择器限制在组件内部</b>。
+    只是换成各自框架的生命周期钩子而已。
+  </p>
+
+  <div class="tabs">
+    <button class="on" data-t="vue">Vue 3</button>
+    <button data-t="nuxt">Nuxt</button>
+    <button data-t="svelte">Svelte</button>
+    <button data-t="common">通用原则</button>
+  </div>
+
+  <!-- ============ Vue ============ -->
+  <div class="pane on" id="p-vue">
+    <h2>基础：onMounted 创建，onUnmounted 清理</h2>
+    <pre class="good"><span class="c">&lt;!-- Hero.vue --&gt;</span>
+<span class="t">&lt;script setup&gt;</span>
+<span class="k">import</span> { ref, onMounted, onUnmounted } <span class="k">from</span> <span class="s">"vue"</span>;
+<span class="k">import</span> gsap <span class="k">from</span> <span class="s">"gsap"</span>;
+
+<span class="k">const</span> container = <span class="f">ref</span>(<span class="v">null</span>);
+<span class="k">let</span> ctx;
+
+<span class="f">onMounted</span>(() =&gt; {
+  <span class="c">// gsap.context 是非 React 框架里的清理利器</span>
+  <span class="c">// 第二个参数就是 scope，选择器只在容器内部查找</span>
+  ctx = gsap.<span class="f">context</span>(() =&gt; {
+    gsap.<span class="f">from</span>(<span class="s">".title"</span>, { y: <span class="v">40</span>, opacity: <span class="v">0</span>, duration: <span class="v">0.8</span> });
+    gsap.<span class="f">from</span>(<span class="s">".card"</span>, { y: <span class="v">30</span>, opacity: <span class="v">0</span>, stagger: <span class="v">0.1</span> });
+  }, container.value);
+});
+
+<span class="f">onUnmounted</span>(() =&gt; {
+  <span class="c">// 一行撤销全部：kill 动画 + 移除内联样式 + 清理 ScrollTrigger</span>
+  ctx?.<span class="f">revert</span>();
+});
+<span class="t">&lt;/script&gt;</span>
+
+<span class="t">&lt;template&gt;</span>
+  &lt;div ref=<span class="s">"container"</span>&gt;
+    &lt;h1 class=<span class="s">"title"</span>&gt;标题&lt;/h1&gt;
+    &lt;div class=<span class="s">"card"</span> v-<span class="k">for</span>=<span class="s">"n in 3"</span> :key=<span class="s">"n"</span>&gt;卡片 {{ n }}&lt;/div&gt;
+  &lt;/div&gt;
+<span class="t">&lt;/template&gt;</span></pre>
+
+    <h2>响应数据变化时重播</h2>
+    <pre class="good"><span class="k">import</span> { watch } <span class="k">from</span> <span class="s">"vue"</span>;
+
+<span class="f">watch</span>(activeTab, (val) =&gt; {
+  <span class="c">// 数据变了就重新播，别忘了 overwrite 防止叠加</span>
+  gsap.<span class="f">to</span>(<span class="s">".indicator"</span>, {
+    x: val * <span class="v">120</span>,
+    duration: <span class="v">0.4</span>,
+    ease: <span class="s">"power2.out"</span>,
+    overwrite: <span class="s">"auto"</span>
+  });
+});</pre>
+
+    <h2>v-for 列表：等 DOM 更新完再动画</h2>
+    <pre class="good"><span class="k">import</span> { nextTick } <span class="k">from</span> <span class="s">"vue"</span>;
+
+<span class="k">async function</span> <span class="f">addItem</span>() {
+  items.value.<span class="f">push</span>(newItem);
+  <span class="c">// 必须等 Vue 把新节点渲染进 DOM，否则选择器选不到</span>
+  <span class="k">await</span> <span class="f">nextTick</span>();
+  gsap.<span class="f">from</span>(<span class="s">".item:last-child"</span>, { scale: <span class="v">0</span>, opacity: <span class="v">0</span>, duration: <span class="v">0.4</span> });
+}</pre>
+
+    <h2>配合 Vue 内置的 Transition 组件</h2>
+    <p class="body">
+      Vue 的 <code>&lt;Transition&gt;</code> 提供了 JS 钩子，可以把 GSAP 接进去，
+      这样进出场时机由 Vue 管理，动画本身由 GSAP 实现。<b>done 回调一定要调用</b>，
+      否则 Vue 不知道动画结束了，元素不会被正确移除。
+    </p>
+    <pre class="good"><span class="t">&lt;Transition</span>
+  :css=<span class="s">"false"</span>
+  @enter=<span class="s">"onEnter"</span>
+  @leave=<span class="s">"onLeave"</span>
+<span class="t">&gt;</span>
+  &lt;div v-<span class="k">if</span>=<span class="s">"show"</span> class=<span class="s">"modal"</span>&gt;…&lt;/div&gt;
+<span class="t">&lt;/Transition&gt;</span>
+
+<span class="c">// ---</span>
+<span class="k">function</span> <span class="f">onEnter</span>(el, done) {
+  gsap.<span class="f">from</span>(el, { scale: <span class="v">0.9</span>, opacity: <span class="v">0</span>, duration: <span class="v">0.35</span>, onComplete: done });
+}
+<span class="k">function</span> <span class="f">onLeave</span>(el, done) {
+  gsap.<span class="f">to</span>(el, { scale: <span class="v">0.95</span>, opacity: <span class="v">0</span>, duration: <span class="v">0.25</span>, onComplete: done });
+}</pre>
+  </div>
+
+  <!-- ============ Nuxt ============ -->
+  <div class="pane" id="p-nuxt">
+    <h2>Nuxt 的额外问题：SSR</h2>
+    <p class="body">
+      Nuxt 默认服务端渲染，而 GSAP 需要真实的 <code>window</code> 和 <code>document</code>。
+      在服务端执行 GSAP 代码会直接报错。<b>所有 GSAP 调用都必须在客户端生命周期里</b>。
+    </p>
+
+    <span class="tagline bad">❌ 在 setup 顶层直接跑</span>
+    <pre class="bad"><span class="t">&lt;script setup&gt;</span>
+<span class="k">import</span> gsap <span class="k">from</span> <span class="s">"gsap"</span>;
+<span class="k">import</span> ScrollTrigger <span class="k">from</span> <span class="s">"gsap/ScrollTrigger"</span>;
+
+<span class="c">// 服务端也会执行这行 → window is not defined</span>
+gsap.<span class="f">registerPlugin</span>(ScrollTrigger);
+<span class="t">&lt;/script&gt;</span></pre>
+
+    <span class="tagline good">✅ 放进 onMounted，并从 /dist 引插件</span>
+    <pre class="good"><span class="t">&lt;script setup&gt;</span>
+<span class="k">import</span> gsap <span class="k">from</span> <span class="s">"gsap"</span>;
+<span class="c">// 注意从 gsap/dist/ 引入，这个路径是 UMD 版本，兼容性更好</span>
+<span class="k">import</span> { ScrollTrigger } <span class="k">from</span> <span class="s">"gsap/dist/ScrollTrigger"</span>;
+
+<span class="k">const</span> container = <span class="f">ref</span>(<span class="v">null</span>);
+<span class="k">let</span> ctx;
+
+<span class="f">onMounted</span>(() =&gt; {
+  gsap.<span class="f">registerPlugin</span>(ScrollTrigger);   <span class="c">// 只在客户端注册</span>
+
+  ctx = gsap.<span class="f">context</span>(() =&gt; {
+    gsap.<span class="f">to</span>(<span class="s">".panel"</span>, {
+      y: <span class="v">-100</span>,
+      scrollTrigger: { trigger: <span class="s">".panel"</span>, scrub: <span class="v">1</span> }
+    });
+  }, container.value);
+});
+
+<span class="f">onUnmounted</span>(() =&gt; ctx?.<span class="f">revert</span>());
+<span class="t">&lt;/script&gt;</span></pre>
+
+    <h2>路由切换后 ScrollTrigger 位置错乱</h2>
+    <p class="body">
+      Nuxt 的页面切换是客户端路由，DOM 换了但 ScrollTrigger 记录的还是旧页面的位置。
+      <b>切换后要手动 refresh 一次</b>。
+    </p>
+    <pre class="good"><span class="k">const</span> router = <span class="f">useRouter</span>();
+
+router.<span class="f">afterEach</span>(() =&gt; {
+  <span class="c">// 等新页面 DOM 渲染完再刷新，否则量到的还是旧高度</span>
+  <span class="f">nextTick</span>(() =&gt; ScrollTrigger.<span class="f">refresh</span>());
+});</pre>
+
+    <h2>做成插件全局注册</h2>
+    <pre class="good"><span class="c">// plugins/gsap.client.js —— 文件名带 .client 表示只在客户端跑</span>
+<span class="k">import</span> gsap <span class="k">from</span> <span class="s">"gsap"</span>;
+<span class="k">import</span> { ScrollTrigger } <span class="k">from</span> <span class="s">"gsap/dist/ScrollTrigger"</span>;
+
+gsap.<span class="f">registerPlugin</span>(ScrollTrigger);
+
+<span class="k">export default</span> <span class="f">defineNuxtPlugin</span>(() =&gt; ({
+  provide: { gsap, ScrollTrigger }
+}));
+
+<span class="c">// 组件里：const { $gsap } = useNuxtApp();</span></pre>
+  </div>
+
+  <!-- ============ Svelte ============ -->
+  <div class="pane" id="p-svelte">
+    <h2>基础：onMount 返回清理函数</h2>
+    <p class="body">
+      Svelte 的 <code>onMount</code> 有个很方便的特性：<b>它返回的函数会在组件销毁时自动执行</b>，
+      所以不需要单独写 onDestroy。
+    </p>
+    <pre class="good"><span class="t">&lt;script&gt;</span>
+  <span class="k">import</span> { onMount } <span class="k">from</span> <span class="s">"svelte"</span>;
+  <span class="k">import</span> gsap <span class="k">from</span> <span class="s">"gsap"</span>;
+
+  <span class="k">let</span> container;
+
+  <span class="f">onMount</span>(() =&gt; {
+    <span class="k">const</span> ctx = gsap.<span class="f">context</span>(() =&gt; {
+      gsap.<span class="f">from</span>(<span class="s">".title"</span>, { y: <span class="v">40</span>, opacity: <span class="v">0</span>, duration: <span class="v">0.8</span> });
+      gsap.<span class="f">from</span>(<span class="s">".card"</span>, { y: <span class="v">30</span>, opacity: <span class="v">0</span>, stagger: <span class="v">0.1</span> });
+    }, container);
+
+    <span class="c">// onMount 返回的函数 = 组件销毁时执行，比 React 还省事</span>
+    <span class="k">return</span> () =&gt; ctx.<span class="f">revert</span>();
+  });
+<span class="t">&lt;/script&gt;</span>
+
+&lt;div bind:this={container}&gt;
+  &lt;h1 class=<span class="s">"title"</span>&gt;标题&lt;/h1&gt;
+  {#each items <span class="k">as</span> item}
+    &lt;div class=<span class="s">"card"</span>&gt;{item}&lt;/div&gt;
+  {/each}
+&lt;/div&gt;</pre>
+
+    <h2>SvelteKit 的 SSR 处理</h2>
+    <pre class="good"><span class="k">import</span> { browser } <span class="k">from</span> <span class="s">"$app/environment"</span>;
+
+<span class="c">// 方式一：条件判断</span>
+<span class="k">if</span> (browser) {
+  gsap.<span class="f">registerPlugin</span>(ScrollTrigger);
+}
+
+<span class="c">// 方式二：动态导入，插件代码根本不会进服务端 bundle</span>
+<span class="f">onMount</span>(<span class="k">async</span> () =&gt; {
+  <span class="k">const</span> { ScrollTrigger } = <span class="k">await import</span>(<span class="s">"gsap/dist/ScrollTrigger"</span>);
+  gsap.<span class="f">registerPlugin</span>(ScrollTrigger);
+  <span class="c">// …动画代码</span>
+});</pre>
+
+    <h2>Svelte 的 action：把动画封装成可复用指令</h2>
+    <p class="body">
+      这是 Svelte 独有的优雅之处。<b>action 天生带 destroy 钩子</b>，
+      非常适合把「元素进入视口就淡入」这类通用动画封装起来，用 <code>use:</code> 一行挂上去。
+    </p>
+    <pre class="good"><span class="c">// lib/actions/fadeIn.js</span>
+<span class="k">import</span> gsap <span class="k">from</span> <span class="s">"gsap"</span>;
+<span class="k">import</span> { ScrollTrigger } <span class="k">from</span> <span class="s">"gsap/dist/ScrollTrigger"</span>;
+
+<span class="k">export function</span> <span class="f">fadeIn</span>(node, params = {}) {
+  <span class="k">const</span> tween = gsap.<span class="f">from</span>(node, {
+    y: params.y ?? <span class="v">40</span>,
+    opacity: <span class="v">0</span>,
+    duration: params.duration ?? <span class="v">0.7</span>,
+    scrollTrigger: { trigger: node, start: <span class="s">"top 85%"</span> }
+  });
+
+  <span class="k">return</span> {
+    <span class="c">// 元素销毁时自动调用</span>
+    <span class="f">destroy</span>() {
+      tween.scrollTrigger?.<span class="f">kill</span>();
+      tween.<span class="f">kill</span>();
+    }
+  };
+}
+
+<span class="c">// 用法：一行搞定，还能传参</span>
+<span class="c">// &lt;div use:fadeIn&gt;…&lt;/div&gt;</span>
+<span class="c">// &lt;div use:fadeIn={{ y: 80, duration: 1 }}&gt;…&lt;/div&gt;</span></pre>
+
+    <h2>Svelte 5 的 runes 写法</h2>
+    <pre class="good"><span class="t">&lt;script&gt;</span>
+  <span class="k">let</span> container;
+
+  <span class="c">// $effect 相当于 onMount + 依赖追踪，返回值同样用于清理</span>
+  <span class="f">$effect</span>(() =&gt; {
+    <span class="k">const</span> ctx = gsap.<span class="f">context</span>(() =&gt; {
+      gsap.<span class="f">from</span>(<span class="s">".card"</span>, { y: <span class="v">30</span>, opacity: <span class="v">0</span>, stagger: <span class="v">0.1</span> });
+    }, container);
+
+    <span class="k">return</span> () =&gt; ctx.<span class="f">revert</span>();
+  });
+<span class="t">&lt;/script&gt;</span></pre>
+  </div>
+
+  <!-- ============ 通用 ============ -->
+  <div class="pane" id="p-common">
+    <h2>四条通用原则（任何框架都成立）</h2>
+
+    <table>
+      <thead><tr><th>原则</th><th>做法</th><th>不做的后果</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>1. 等 DOM 就绪再创建动画</b></td>
+          <td><code>onMounted</code> / <code>onMount</code> / <code>$effect</code></td>
+          <td>选择器选不到元素，动画静默失败</td>
+        </tr>
+        <tr>
+          <td><b>2. 用 gsap.context 包住</b></td>
+          <td><code>gsap.context(fn, scopeElement)</code></td>
+          <td>选择器泄漏到别的组件；无法一次性清理</td>
+        </tr>
+        <tr>
+          <td><b>3. 销毁时 revert</b></td>
+          <td><code>ctx.revert()</code></td>
+          <td>ScrollTrigger 变僵尸监听器，内存泄漏</td>
+        </tr>
+        <tr>
+          <td><b>4. SSR 框架只在客户端跑</b></td>
+          <td><code>.client.js</code> / <code>if (browser)</code> / 动态 import</td>
+          <td>构建或首屏直接报 window is not defined</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>gsap.context 到底做了什么</h2>
+    <p class="body">
+      这是非 React 框架里最重要的一个 API，它做两件事：
+    </p>
+    <pre class="good"><span class="k">const</span> ctx = gsap.<span class="f">context</span>(() =&gt; {
+  <span class="c">// ① 记录：这个回调里创建的所有动画、ScrollTrigger、Draggable 都被登记在案</span>
+  gsap.<span class="f">to</span>(<span class="s">".box"</span>, { x: <span class="v">100</span> });
+  ScrollTrigger.<span class="f">create</span>({ <span class="c">/* … */</span> });
+}, scopeElement);
+<span class="c">// ② 限定作用域：上面的 ".box" 只在 scopeElement 内部查找</span>
+
+ctx.<span class="f">revert</span>();
+<span class="c">// 一次性撤销：kill 所有动画 + 移除 GSAP 写入的内联样式 + 清理所有插件实例</span>
+<span class="c">// 元素回到 GSAP 从没碰过它的状态</span>
+
+ctx.<span class="f">kill</span>();
+<span class="c">// 只 kill 动画，保留当前的视觉状态（元素停在原地不回弹）</span></pre>
+
+    <div class="callout">
+      <b>revert 和 kill 的区别经常被搞错：</b><br>
+      · <code>revert()</code> —— 撤销一切，元素回到<b>动画开始前的样子</b>。组件卸载时用这个。<br>
+      · <code>kill()</code> —— 只停止动画，元素<b>停在当前位置</b>。想让元素保持当前状态时用这个。
+    </div>
+
+    <h2>Astro / 原生 Web Components</h2>
+    <pre class="good"><span class="c">// Astro：脚本默认就在客户端跑，但要注意 View Transitions</span>
+<span class="c">// astro:page-load 每次页面切换后都会触发（含首次加载）</span>
+document.<span class="f">addEventListener</span>(<span class="s">"astro:page-load"</span>, () =&gt; {
+  gsap.<span class="f">from</span>(<span class="s">".card"</span>, { y: <span class="v">30</span>, opacity: <span class="v">0</span>, stagger: <span class="v">0.1</span> });
+  ScrollTrigger.<span class="f">refresh</span>();
+});
+
+<span class="c">// Web Components：用自定义元素自己的生命周期</span>
+<span class="k">class</span> MyCard <span class="k">extends</span> HTMLElement {
+  <span class="f">connectedCallback</span>() {
+    <span class="k">this</span>.ctx = gsap.<span class="f">context</span>(() =&gt; {
+      gsap.<span class="f">from</span>(<span class="k">this</span>.<span class="f">querySelector</span>(<span class="s">".inner"</span>), { opacity: <span class="v">0</span> });
+    }, <span class="k">this</span>);
+  }
+  <span class="f">disconnectedCallback</span>() {
+    <span class="k">this</span>.ctx.<span class="f">revert</span>();
+  }
+}</pre>
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('.tabs button').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('on'));
+      document.querySelectorAll('.pane').forEach(p => p.classList.remove('on'));
+      btn.classList.add('on');
+      document.getElementById('p-' + btn.dataset.t).classList.add('on');
+    };
+  });
+</script>
+</body>
+</html>

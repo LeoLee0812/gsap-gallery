@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>quickTo / quickSetter · 高频更新的正确写法</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh; padding: 34px 24px 60px;
+    display: flex; flex-direction: column; align-items: center; gap: 20px;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .sub { font-size: 13.5px; opacity: .55; text-align: center; max-width: 740px; line-height: 1.8; margin-top: -12px; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; width: min(1080px, 100%); }
+  .pad {
+    flex: 1 1 330px; height: 300px; position: relative;
+    background: #161b22; border: 1px solid #30363d; border-radius: 16px;
+    overflow: hidden; cursor: crosshair;
+  }
+  .pad::before {
+    content: ''; position: absolute; inset: 0;
+    background-image: linear-gradient(#21262d 1px, transparent 1px), linear-gradient(90deg, #21262d 1px, transparent 1px);
+    background-size: 34px 34px; opacity: .45;
+  }
+  .padtitle {
+    position: absolute; top: 12px; left: 14px; right: 14px; z-index: 3;
+    font-size: 12.5px; font-family: ui-monospace, Menlo, monospace; color: #58e6a8;
+  }
+  .padtitle span { display: block; font-size: 11px; opacity: .5; color: #8b949e; margin-top: 3px; font-family: system-ui; }
+  .stat {
+    position: absolute; bottom: 12px; left: 14px; z-index: 3;
+    font-size: 11.5px; font-family: ui-monospace, Menlo, monospace; color: #6e7681; line-height: 1.8;
+  }
+  .stat b { color: #f0883e; }
+  .follower {
+    position: absolute; width: 40px; height: 40px; border-radius: 50%;
+    margin: -20px 0 0 -20px; left: 0; top: 0; z-index: 2; pointer-events: none;
+  }
+  .hintbig {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 14px; opacity: .3; z-index: 1; pointer-events: none;
+  }
+  /* 压力测试区 */
+  .stress {
+    width: min(1080px, 100%); background: #161b22;
+    border: 1px solid #30363d; border-radius: 16px; padding: 18px 22px;
+  }
+  .stitle { font-size: 15px; font-weight: 700; color: #58e6a8; margin-bottom: 4px; }
+  .sdesc { font-size: 12.5px; opacity: .55; line-height: 1.7; margin-bottom: 14px; }
+  .stressField {
+    height: 190px; position: relative; overflow: hidden;
+    background: #0d1117; border: 1px solid #21262d; border-radius: 12px;
+  }
+  .dot { position: absolute; width: 9px; height: 9px; border-radius: 50%; background: #58e6a8; }
+  .ctrls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+  .ctrls button {
+    background: #0d1117; color: #58e6a8; border: 1px solid #30363d;
+    border-radius: 8px; padding: 8px 16px; font-size: 13px; cursor: pointer; font-family: inherit;
+  }
+  .ctrls button.on { background: #58e6a8; color: #0d1117; }
+  .fps {
+    font-size: 13px; font-family: ui-monospace, Menlo, monospace;
+    margin-left: auto; color: #58e6a8;
+  }
+  .fps b { font-size: 18px; }
+  .fps.bad { color: #f85149; }
+  pre {
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    padding: 16px 20px; font-size: 12.5px; line-height: 1.75;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #8b949e; width: min(1080px, 100%); overflow-x: auto;
+  }
+  pre .k { color: #58e6a8; }
+  pre .c { color: #6e7681; }
+  pre .bad { color: #f85149; }
+  .note {
+    width: min(1080px, 100%); font-size: 13px; color: #8b949e; line-height: 1.9;
+    border-top: 1px solid #21262d; padding-top: 16px;
+  }
+  .note b { color: #58e6a8; }
+</style>
+</head>
+<body>
+  <h1>quickTo / quickSetter · 高频更新的正确写法</h1>
+  <p class="sub">
+    鼠标跟随、拖拽、滚动联动这类<b>每帧都要改同一个属性</b>的场景，如果每次都写 <code>gsap.to()</code>，
+    就是每帧创建一个全新的 tween 对象——几百个一次性对象往 GC 里灌。
+    <b>在两个方框里移动鼠标</b>，看右下角的实例计数差多少。
+  </p>
+
+  <div class="row">
+    <div class="pad" id="padA">
+      <div class="padtitle">gsap.to() 每次新建 tween
+        <span>❌ 错误写法：每次 mousemove 都创建一个新的补间对象</span>
+      </div>
+      <div class="follower" id="fA" style="background:#f85149"></div>
+      <div class="hintbig">在这里移动鼠标</div>
+      <div class="stat">累计创建 tween：<b id="cntA">0</b><br>当前活跃实例：<b id="liveA">0</b></div>
+    </div>
+
+    <div class="pad" id="padB">
+      <div class="padtitle">gsap.quickTo() 复用同一个 tween
+        <span>✅ 正确写法：只创建一次，之后每帧只是改目标值</span>
+      </div>
+      <div class="follower" id="fB" style="background:#58e6a8"></div>
+      <div class="hintbig">在这里移动鼠标</div>
+      <div class="stat">累计创建 tween：<b id="cntB">2</b><br>当前活跃实例：<b id="liveB">2</b></div>
+    </div>
+  </div>
+
+  <div class="stress">
+    <div class="stitle">压力测试：400 个点跟随鼠标</div>
+    <div class="sdesc">
+      同样的效果，两种写法在数量上来之后差距会非常明显。切换写法，在方框里<b>快速画圈</b>，观察右侧 FPS。
+      （现代浏览器很能扛，如果你机器很强可能都不掉帧——那也说明了另一件事：<b>不要为了没测出来的性能问题过度优化</b>。）
+    </div>
+    <div class="stressField" id="field"></div>
+    <div class="ctrls">
+      <button id="useQuick" class="on">quickTo（复用）</button>
+      <button id="useTo">gsap.to（每帧新建）</button>
+      <button id="useSetter">quickSetter（无补间，直接写）</button>
+      <div class="fps" id="fps">FPS <b>--</b></div>
+    </div>
+  </div>
+
+  <pre><span class="c">// ❌ 错误：每次 mousemove 创建一个新 tween，一秒钟能造出上百个一次性对象</span>
+<span class="bad">document.addEventListener("mousemove", (e) =&gt; {
+  gsap.to(cursor, { x: e.clientX, y: e.clientY, duration: 0.4 });
+});</span>
+
+<span class="c">// ✅ 正确：quickTo 只创建一次，返回一个函数，之后每帧只是更新目标值</span>
+<span class="k">const</span> xTo = gsap.quickTo(cursor, <span class="k">"x"</span>, { duration: 0.4, ease: <span class="k">"power3"</span> });
+<span class="k">const</span> yTo = gsap.quickTo(cursor, <span class="k">"y"</span>, { duration: 0.4, ease: <span class="k">"power3"</span> });
+
+document.addEventListener(<span class="k">"mousemove"</span>, (e) =&gt; {
+  xTo(e.clientX);   <span class="c">// 只是改目标值，不新建对象</span>
+  yTo(e.clientY);
+});
+
+<span class="c">// ✅ 完全不需要补间（要立刻跟手、没有延迟感）时，用 quickSetter 更省</span>
+<span class="k">const</span> setX = gsap.quickSetter(cursor, <span class="k">"x"</span>, <span class="k">"px"</span>);
+setX(e.clientX);   <span class="c">// 直接写入，零补间开销</span></pre>
+
+  <p class="note">
+    <b>三者怎么选：</b><br>
+    · <b>quickTo</b> —— 需要平滑跟随（有阻尼、有延迟感）。自定义光标、磁吸元素、视差层。<br>
+    · <b>quickSetter</b> —— 要求完全跟手、不能有一帧延迟。拖拽中的元素、精确对齐的辅助线。<br>
+    · <b>gsap.to</b> —— 一次性的、非高频的动画。点击展开、入场退场。<b>这才是它该待的地方。</b><br><br>
+    <b>另一个常被忽略的点：</b>quickTo 返回的函数还能<b>接收第二个参数</b>覆盖 duration，
+    比如 <code>xTo(200, 0.1)</code> 就是这一次用 0.1 秒——做「速度自适应」的跟随很好用。
+  </p>
+
+<script src="../lib/gsap.min.js"></script>
+<script>
+  // ---------- 左侧：每次 mousemove 都 gsap.to ----------
+  let cntA = 0;
+  const padA = document.getElementById('padA');
+  padA.addEventListener('mousemove', e => {
+    const r = padA.getBoundingClientRect();
+    // 每一次移动都新建一个 tween 对象
+    gsap.to('#fA', {
+      x: e.clientX - r.left, y: e.clientY - r.top,
+      duration: 0.4, ease: 'power3'
+    });
+    cntA++;
+    document.getElementById('cntA').textContent = cntA;
+  });
+
+  // ---------- 右侧：quickTo 只创建一次 ----------
+  const padB = document.getElementById('padB');
+  // 这两行在整个页面生命周期里只执行一次
+  const xTo = gsap.quickTo('#fB', 'x', { duration: 0.4, ease: 'power3' });
+  const yTo = gsap.quickTo('#fB', 'y', { duration: 0.4, ease: 'power3' });
+  padB.addEventListener('mousemove', e => {
+    const r = padB.getBoundingClientRect();
+    xTo(e.clientX - r.left);
+    yTo(e.clientY - r.top);
+  });
+
+  // 每秒统计一次 GSAP 内部的活跃动画数量
+  setInterval(() => {
+    // globalTimeline 的子动画数量约等于当前活跃 tween 数
+    const live = gsap.globalTimeline.getChildren(false, true, false).length;
+    document.getElementById('liveA').textContent = live;
+  }, 300);
+
+  // ---------- 压力测试 ----------
+  const field = document.getElementById('field');
+  const DOTS = [];
+  const N = 400;
+  for (let i = 0; i < N; i++) {
+    const d = document.createElement('div');
+    d.className = 'dot';
+    d.style.background = `hsl(${150 + (i / N) * 110} 70% 55%)`;
+    field.appendChild(d);
+    DOTS.push(d);
+  }
+
+  // 为每个点预先建好 quickTo / quickSetter，只建一次
+  const quickTos = DOTS.map(d => ({
+    x: gsap.quickTo(d, 'x', { duration: 0.5 + Math.random() * 0.6, ease: 'power3' }),
+    y: gsap.quickTo(d, 'y', { duration: 0.5 + Math.random() * 0.6, ease: 'power3' })
+  }));
+  const quickSetters = DOTS.map(d => ({
+    x: gsap.quickSetter(d, 'x', 'px'),
+    y: gsap.quickSetter(d, 'y', 'px')
+  }));
+
+  let mode = 'quick';
+  let mouse = { x: 0, y: 0 };
+
+  field.addEventListener('mousemove', e => {
+    const r = field.getBoundingClientRect();
+    mouse.x = e.clientX - r.left;
+    mouse.y = e.clientY - r.top;
+
+    DOTS.forEach((d, i) => {
+      // 每个点带一点偏移，形成尾随的云团
+      const ox = Math.cos(i * 0.7) * (10 + (i % 30) * 2.6);
+      const oy = Math.sin(i * 0.7) * (10 + (i % 30) * 2.6);
+      const tx = mouse.x + ox, ty = mouse.y + oy;
+
+      if (mode === 'quick') {
+        quickTos[i].x(tx); quickTos[i].y(ty);
+      } else if (mode === 'to') {
+        // 故意用最差写法：每帧每个点都新建 tween
+        gsap.to(d, { x: tx, y: ty, duration: 0.5, ease: 'power3', overwrite: true });
+      } else {
+        quickSetters[i].x(tx); quickSetters[i].y(ty);
+      }
+    });
+  });
+
+  document.getElementById('useQuick').onclick = e => setMode('quick', e.target);
+  document.getElementById('useTo').onclick = e => setMode('to', e.target);
+  document.getElementById('useSetter').onclick = e => setMode('setter', e.target);
+  function setMode(m, btn) {
+    mode = m;
+    document.querySelectorAll('.ctrls button').forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
+  }
+
+  // 简易 FPS 计数
+  let frames = 0, last = performance.now();
+  function tick(now) {
+    frames++;
+    if (now - last >= 500) {
+      const fps = Math.round(frames * 1000 / (now - last));
+      const el = document.getElementById('fps');
+      el.innerHTML = `FPS <b>${fps}</b>`;
+      el.classList.toggle('bad', fps < 45);
+      frames = 0; last = now;
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+</script>
+</body>
+</html>

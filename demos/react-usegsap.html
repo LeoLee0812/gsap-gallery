@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GSAP 在 React / Next.js 里的正确用法</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+    padding: 40px 24px 80px; line-height: 1.6;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 25px; font-weight: 800; text-align: center; }
+  .sub { text-align: center; opacity: .55; font-size: 14px; margin: 10px auto 30px; max-width: 700px; line-height: 1.8; }
+  h2 {
+    font-size: 17px; margin: 34px 0 12px; padding-left: 11px;
+    border-left: 3px solid #58e6a8; font-weight: 700;
+  }
+  p.body { font-size: 14px; color: #8b949e; line-height: 1.95; margin-bottom: 14px; }
+  p.body b { color: #58e6a8; }
+  pre {
+    background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+    padding: 18px 22px; font-size: 12.8px; line-height: 1.8;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #c9d1d9; overflow-x: auto; margin-bottom: 8px;
+  }
+  pre.bad { border-color: rgba(248,81,73,.4); background: rgba(248,81,73,.05); }
+  pre.good { border-color: rgba(88,230,168,.35); background: rgba(88,230,168,.04); }
+  .k { color: #ff7b72; }
+  .s { color: #a5d6ff; }
+  .c { color: #6e7681; font-style: italic; }
+  .f { color: #d2a8ff; }
+  .v { color: #79c0ff; }
+  .tagline {
+    font-size: 12px; font-weight: 700; margin-bottom: 6px;
+    display: inline-block; padding: 3px 10px; border-radius: 6px;
+  }
+  .tagline.bad { background: rgba(248,81,73,.15); color: #f85149; }
+  .tagline.good { background: rgba(88,230,168,.15); color: #58e6a8; }
+  .callout {
+    background: #161b22; border: 1px solid #30363d; border-left: 3px solid #f0883e;
+    border-radius: 10px; padding: 14px 18px; font-size: 13.5px; color: #8b949e;
+    line-height: 1.9; margin: 16px 0;
+  }
+  .callout b { color: #f0883e; }
+  table {
+    width: 100%; border-collapse: collapse; font-size: 13px; margin: 14px 0;
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px; overflow: hidden;
+  }
+  th, td { padding: 11px 14px; text-align: left; border-bottom: 1px solid #21262d; vertical-align: top; }
+  th { background: #0d1117; font-size: 12px; opacity: .6; font-weight: 500; }
+  tr:last-child td { border-bottom: 0; }
+  td code { color: #58e6a8; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+  .install {
+    background: #0d1117; border: 1px solid #30363d; border-radius: 10px;
+    padding: 13px 18px; font-family: ui-monospace, Menlo, monospace;
+    font-size: 13px; color: #58e6a8; margin-bottom: 14px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>GSAP 在 React / Next.js 里的正确用法</h1>
+  <p class="sub">
+    React 和 GSAP 的核心矛盾只有一句话：<b>React 会反复重新渲染和卸载组件，而 GSAP 的动画是挂在真实 DOM 上的</b>。
+    处理不好就是内存泄漏、动画重复叠加、控制台一堆警告。
+    官方给了 <code>useGSAP()</code> 这个 hook，把这些全解决了。
+  </p>
+
+  <h2>安装</h2>
+  <div class="install">npm install gsap @gsap/react</div>
+  <p class="body">
+    <b>@gsap/react 是独立的包</b>，只有几百行，提供 <code>useGSAP()</code> 一个 hook。
+    GSAP 本体和所有插件现在全部免费，直接从公共 npm 装即可，<b>不需要 .npmrc、不需要 auth token、不需要私有源</b>
+    ——网上那些教你配私有 registry 的老教程可以忽略了。
+  </p>
+
+  <h2>核心写法</h2>
+  <pre class="good"><span class="c">// components/Hero.jsx</span>
+<span class="k">import</span> { useRef } <span class="k">from</span> <span class="s">"react"</span>;
+<span class="k">import</span> gsap <span class="k">from</span> <span class="s">"gsap"</span>;
+<span class="k">import</span> { useGSAP } <span class="k">from</span> <span class="s">"@gsap/react"</span>;
+
+<span class="c">// 注册一次即可，通常放在应用入口</span>
+gsap.<span class="f">registerPlugin</span>(useGSAP);
+
+<span class="k">export default function</span> <span class="f">Hero</span>() {
+  <span class="k">const</span> container = <span class="f">useRef</span>(<span class="v">null</span>);
+
+  <span class="f">useGSAP</span>(() =&gt; {
+    <span class="c">// 这里面的所有 GSAP 动画都会被自动记录</span>
+    <span class="c">// 组件卸载时统统 revert（撤销内联样式 + kill 动画 + 清理 ScrollTrigger）</span>
+    gsap.<span class="f">from</span>(<span class="s">".title"</span>, { y: <span class="v">40</span>, opacity: <span class="v">0</span>, duration: <span class="v">0.8</span> });
+    gsap.<span class="f">from</span>(<span class="s">".card"</span>, { y: <span class="v">30</span>, opacity: <span class="v">0</span>, stagger: <span class="v">0.1</span> });
+  }, { scope: container });   <span class="c">// ← scope 是关键，见下方</span>
+
+  <span class="k">return</span> (
+    &lt;div ref={container}&gt;
+      &lt;h1 className=<span class="s">"title"</span>&gt;标题&lt;/h1&gt;
+      &lt;div className=<span class="s">"card"</span>&gt;卡片&lt;/div&gt;
+    &lt;/div&gt;
+  );
+}</pre>
+
+  <h2>为什么必须传 scope</h2>
+  <p class="body">
+    没有 scope 时，<code>".card"</code> 这个选择器会匹配<b>整个页面上所有 .card</b>——
+    包括别的组件里的、包括同一个组件渲染多份时其他实例里的。
+    传了 scope 之后，选择器只在这个 ref 容器<b>内部</b>查找。
+  </p>
+  <p class="body">
+    这也是为什么在 React 里能安心用类选择器而不必给每个元素都建 ref。
+    <b>需要单个元素的精确引用时才用 ref</b>，批量元素用 scope + 类选择器更省事。
+  </p>
+
+  <h2>依赖数组与重新执行</h2>
+  <pre class="good"><span class="f">useGSAP</span>(() =&gt; {
+  gsap.<span class="f">to</span>(<span class="s">".box"</span>, { x: endX });
+}, {
+  dependencies: [endX],     <span class="c">// 和 useEffect 一样，endX 变化时重新执行</span>
+  scope: container,
+  revertOnUpdate: <span class="v">true</span>     <span class="c">// 重新执行前，先把上一轮的动画完全撤销</span>
+});</pre>
+  <div class="callout">
+    <b>revertOnUpdate 很容易被忽略。</b>不加它，依赖变化时会在<b>旧动画留下的内联样式之上</b>再叠一层新动画，
+    元素会越跑越偏。加上之后每次都从干净状态重新开始。
+  </div>
+
+  <h2>事件回调里创建动画：contextSafe</h2>
+  <p class="body">
+    <code>useGSAP</code> 只能自动管理它<b>回调函数体内同步创建</b>的动画。
+    点击、hover 这类事件里创建的动画属于「之后才发生」，需要用 <code>contextSafe</code> 包一层，
+    它返回的函数才会被纳入清理范围。
+  </p>
+  <pre class="good"><span class="k">const</span> { contextSafe } = <span class="f">useGSAP</span>({ scope: container });
+
+<span class="c">// 包一层，卸载后调用会安全地什么都不做，而不是报错</span>
+<span class="k">const</span> handleClick = <span class="f">contextSafe</span>(() =&gt; {
+  gsap.<span class="f">to</span>(<span class="s">".box"</span>, { rotation: <span class="s">"+=360"</span>, duration: <span class="v">0.6</span> });
+});
+
+<span class="k">return</span> &lt;button onClick={handleClick}&gt;转一圈&lt;/button&gt;;</pre>
+
+  <h2>常见错误对照</h2>
+
+  <span class="tagline bad">❌ 用 useEffect 但忘了清理</span>
+  <pre class="bad"><span class="f">useEffect</span>(() =&gt; {
+  gsap.<span class="f">to</span>(<span class="s">".box"</span>, { x: <span class="v">100</span>, scrollTrigger: <span class="s">".box"</span> });
+  <span class="c">// 组件卸载后，这个 ScrollTrigger 还挂在页面上监听滚动 → 内存泄漏</span>
+  <span class="c">// 路由来回切几次就攒了一堆僵尸监听器</span>
+}, []);</pre>
+
+  <span class="tagline good">✅ useGSAP 自动处理</span>
+  <pre class="good"><span class="f">useGSAP</span>(() =&gt; {
+  gsap.<span class="f">to</span>(<span class="s">".box"</span>, { x: <span class="v">100</span>, scrollTrigger: <span class="s">".box"</span> });
+}, { scope: container });
+<span class="c">// 卸载时 ScrollTrigger 自动 kill，内联样式自动 revert</span></pre>
+
+  <span class="tagline bad">❌ 在 Next.js 服务端组件里用</span>
+  <pre class="bad"><span class="c">// app/page.jsx —— 默认是服务端组件</span>
+<span class="k">import</span> gsap <span class="k">from</span> <span class="s">"gsap"</span>;   <span class="c">// 报错：document is not defined</span></pre>
+
+  <span class="tagline good">✅ 加 "use client"</span>
+  <pre class="good"><span class="s">"use client"</span>;   <span class="c">// ← 必须放在文件第一行</span>
+
+<span class="k">import</span> gsap <span class="k">from</span> <span class="s">"gsap"</span>;
+<span class="k">import</span> { useGSAP } <span class="k">from</span> <span class="s">"@gsap/react"</span>;
+<span class="c">// GSAP 操作真实 DOM，只能在客户端跑</span></pre>
+
+  <span class="tagline bad">❌ 用 state 驱动每一帧</span>
+  <pre class="bad"><span class="k">const</span> [x, setX] = <span class="f">useState</span>(<span class="v">0</span>);
+<span class="c">// 每帧 setState → 每帧触发 React 重渲染 → 卡成幻灯片</span>
+<span class="f">onMouseMove</span>={e =&gt; <span class="f">setX</span>(e.clientX)}</pre>
+
+  <span class="tagline good">✅ 让 GSAP 直接操作 DOM，绕开 React 渲染</span>
+  <pre class="good"><span class="k">const</span> xTo = <span class="f">useRef</span>();
+
+<span class="f">useGSAP</span>(() =&gt; {
+  <span class="c">// quickTo 只创建一次，之后每帧只是改目标值</span>
+  xTo.current = gsap.<span class="f">quickTo</span>(<span class="s">".cursor"</span>, <span class="s">"x"</span>, { duration: <span class="v">0.4</span> });
+}, { scope: container });
+
+<span class="c">// 完全不经过 React 的 state，零重渲染</span>
+<span class="f">onMouseMove</span>={e =&gt; xTo.current(e.clientX)}</pre>
+
+  <h2>速查表</h2>
+  <table>
+    <thead><tr><th>你要做的事</th><th>怎么写</th></tr></thead>
+    <tbody>
+      <tr><td>组件挂载时播一次入场</td><td><code>useGSAP(() =&gt; {...}, { scope: ref })</code></td></tr>
+      <tr><td>某个 state 变化时重播</td><td><code>{ dependencies: [state], revertOnUpdate: true }</code></td></tr>
+      <tr><td>点击 / hover 时触发</td><td><code>const fn = contextSafe(() =&gt; {...})</code></td></tr>
+      <tr><td>需要控制动画（暂停/倒放）</td><td>把 timeline 存进 <code>useRef</code>，不要用 state</td></tr>
+      <tr><td>高频更新（鼠标跟随）</td><td><code>gsap.quickTo()</code> 存进 ref，绕开 React 渲染</td></tr>
+      <tr><td>Next.js App Router</td><td>文件顶部加 <code>"use client"</code></td></tr>
+      <tr><td>列表项各自的动画</td><td>子组件内各自 <code>useGSAP</code> + 各自的 scope</td></tr>
+      <tr><td>手动清理某个动画</td><td>useGSAP 回调里 <code>return () =&gt; {...}</code></td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <b>最后一条经验：不要试图用 React 的 state 来「驱动」动画。</b>
+    正确的心智模型是——React 负责渲染 DOM 结构，<b>GSAP 直接接管这些 DOM 节点的视觉表现</b>，两者井水不犯河水。
+    一旦你开始用 state 存动画进度、用 setState 推进每一帧，就说明用错了。
+  </div>
+</div>
+</body>
+</html>

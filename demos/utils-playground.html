@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>gsap.utils 实验台</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+    padding: 40px 24px 80px; line-height: 1.5;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  h1 { font-size: 24px; font-weight: 700; text-align: center; }
+  .sub { text-align: center; opacity: .55; font-size: 14px; margin: 10px auto 30px; max-width: 700px; line-height: 1.7; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 16px; }
+  .card {
+    background: #161b22; border: 1px solid #30363d; border-radius: 14px; padding: 18px 20px;
+  }
+  .fn {
+    font-size: 14px; color: #58e6a8; font-weight: 700;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; margin-bottom: 4px;
+  }
+  .desc { font-size: 12.5px; opacity: .55; line-height: 1.65; margin-bottom: 14px; min-height: 34px; }
+  .ctrl { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .ctrl label { font-size: 11px; opacity: .5; width: 46px; flex-shrink: 0; }
+  input[type=range] { flex: 1; accent-color: #58e6a8; }
+  .out {
+    background: #0d1117; border: 1px solid #21262d; border-radius: 8px;
+    padding: 10px 12px; font-size: 12.5px; line-height: 1.8;
+    font-family: ui-monospace, Menlo, monospace; color: #8b949e; word-break: break-all;
+  }
+  .out b { color: #58e6a8; }
+  .out .in { color: #f0883e; }
+  /* 可视化条：直观看清映射/夹取的效果 */
+  .bar {
+    height: 10px; background: #0d1117; border: 1px solid #21262d;
+    border-radius: 5px; position: relative; margin: 10px 0;
+  }
+  .bar i {
+    position: absolute; top: -3px; width: 14px; height: 14px; border-radius: 50%;
+    background: #58e6a8; margin-left: -7px;
+  }
+  .bar .rangebox {
+    position: absolute; top: 0; bottom: 0; background: rgba(59,130,246,.28); border-radius: 5px;
+  }
+  .dots { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+  .dots span {
+    width: 15px; height: 15px; border-radius: 4px; background: #30363d; display: block;
+  }
+  #snapGrid {
+    position: relative; height: 120px; background: #0d1117;
+    border: 1px solid #21262d; border-radius: 8px; margin-top: 8px; overflow: hidden;
+    background-image: linear-gradient(#21262d 1px, transparent 1px), linear-gradient(90deg, #21262d 1px, transparent 1px);
+    background-size: 30px 30px; cursor: crosshair;
+  }
+  #snapDot {
+    position: absolute; width: 18px; height: 18px; border-radius: 50%;
+    background: #58e6a8; margin: -9px 0 0 -9px; pointer-events: none;
+  }
+  #wrapTrack {
+    position: relative; height: 46px; background: #0d1117;
+    border: 1px solid #21262d; border-radius: 8px; margin-top: 8px; overflow: hidden;
+  }
+  #wrapTrack i {
+    position: absolute; top: 12px; width: 22px; height: 22px; border-radius: 6px;
+    background: linear-gradient(135deg, #58e6a8, #3b82f6); display: block;
+  }
+  .swatch { height: 34px; border-radius: 8px; margin-top: 8px; }
+  code { color: #58e6a8; font-family: ui-monospace, Menlo, monospace; }
+  .foot {
+    margin-top: 28px; font-size: 13px; color: #8b949e; line-height: 1.9;
+    border-top: 1px solid #21262d; padding-top: 18px;
+  }
+  .foot b { color: #58e6a8; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>gsap.utils 实验台</h1>
+  <p class="sub">
+    这些不是动画，是做交互动画时天天要算的数学。全都挂在 <code>gsap.utils</code> 上，不用注册插件。
+    拖滑块看它们分别干了什么。
+  </p>
+
+  <div class="grid">
+
+    <div class="card">
+      <div class="fn">clamp(min, max, value)</div>
+      <div class="desc">把数值卡在区间内，超出就取边界。防止鼠标拖太远、滚动值越界。</div>
+      <div class="ctrl"><label>输入</label><input type="range" id="clampIn" min="-60" max="160" value="30"></div>
+      <div class="bar"><div class="rangebox" style="left:27.3%;right:18.2%"></div><i id="clampDot"></i></div>
+      <div class="out" id="clampOut"></div>
+    </div>
+
+    <div class="card">
+      <div class="fn">mapRange(inMin, inMax, outMin, outMax, value)</div>
+      <div class="desc">把一个区间的值线性映射到另一个区间。<b>滚动位置 → 透明度</b>、<b>鼠标 X → 旋转角</b> 全靠它。</div>
+      <div class="ctrl"><label>滚动</label><input type="range" id="mapIn" min="0" max="1000" value="300"></div>
+      <div class="out" id="mapOut"></div>
+      <div class="swatch" id="mapSwatch"></div>
+    </div>
+
+    <div class="card">
+      <div class="fn">normalize(min, max, value)</div>
+      <div class="desc">把任意区间压成 0~1 的进度值。等价于 mapRange 到 [0,1]，写进度条时最顺手。</div>
+      <div class="ctrl"><label>数值</label><input type="range" id="normIn" min="120" max="480" value="300"></div>
+      <div class="bar"><i id="normDot"></i></div>
+      <div class="out" id="normOut"></div>
+    </div>
+
+    <div class="card">
+      <div class="fn">interpolate(a, b, progress)</div>
+      <div class="desc">在两个值之间取中间态。<b>数字、颜色、甚至整个对象</b>都能插值。</div>
+      <div class="ctrl"><label>进度</label><input type="range" id="lerpIn" min="0" max="100" value="40"></div>
+      <div class="out" id="lerpOut"></div>
+      <div class="swatch" id="lerpSwatch"></div>
+    </div>
+
+    <div class="card">
+      <div class="fn">snap(increment, value)</div>
+      <div class="desc">吸附到最近的网格点。拖拽对齐、旋转吸附 15°、滚动吸附整屏都用它。<b>在下方格子里移动鼠标。</b></div>
+      <div class="ctrl"><label>格距</label><input type="range" id="snapStep" min="10" max="60" step="10" value="30"></div>
+      <div id="snapGrid"><div id="snapDot"></div></div>
+      <div class="out" id="snapOut" style="margin-top:8px"></div>
+    </div>
+
+    <div class="card">
+      <div class="fn">wrap(min, max, value)</div>
+      <div class="desc">越界就绕回另一端，像贪吃蛇穿墙。无缝跑马灯、循环轮播的核心。</div>
+      <div class="ctrl"><label>位置</label><input type="range" id="wrapIn" min="0" max="600" value="120"></div>
+      <div id="wrapTrack"><i id="wrapBox"></i></div>
+      <div class="out" id="wrapOut" style="margin-top:8px"></div>
+    </div>
+
+    <div class="card">
+      <div class="fn">random(min, max, snapTo)</div>
+      <div class="desc">带吸附的随机数，也能<b>从数组里随机抽一个</b>。粒子、撒花、随机浮动的标配。</div>
+      <div class="ctrl"><label>吸附</label><input type="range" id="randSnap" min="0" max="20" step="5" value="0"></div>
+      <div class="out" id="randOut"></div>
+      <div class="dots" id="randDots"></div>
+    </div>
+
+    <div class="card">
+      <div class="fn">pipe(fn1, fn2, ...)</div>
+      <div class="desc">把多个函数串成一条流水线，前一个的输出喂给后一个。省掉层层嵌套的括号。</div>
+      <div class="ctrl"><label>输入</label><input type="range" id="pipeIn" min="-200" max="400" value="150"></div>
+      <div class="out" id="pipeOut"></div>
+    </div>
+
+    <div class="card">
+      <div class="fn">toArray(target)</div>
+      <div class="desc">把选择器 / NodeList / 类数组统统转成真数组，之后就能 map、filter、forEach。</div>
+      <div class="out" id="arrOut"></div>
+      <div class="dots" id="arrDots"></div>
+    </div>
+
+    <div class="card">
+      <div class="fn">unitize(fn, unit)　·　splitColor(color)</div>
+      <div class="desc">unitize 让上面那些纯数字工具能直接处理带单位的字符串；splitColor 把颜色拆成 RGB / HSL 数组。</div>
+      <div class="out" id="miscOut"></div>
+    </div>
+
+  </div>
+
+  <p class="foot">
+    <b>省略最后一个参数 = 拿到一个可复用的函数。</b>
+    比如 <code>const clamp = gsap.utils.clamp(0, 100)</code>，之后直接 <code>clamp(x)</code>。
+    在 mousemove、onUpdate 这类每帧调用的地方，这样写比每次传全参数更清晰也更省。<br>
+    唯一的例外是 <b>random()</b>——它要拿可复用函数得把最后一个参数传 <code>true</code>，而不是省略。
+  </p>
+</div>
+
+<script src="../lib/gsap.min.js"></script>
+<script>
+  const u = gsap.utils;
+
+  // ---------- clamp ----------
+  const clampIn = document.getElementById('clampIn');
+  // 省略 value 参数，得到一个可复用的 clamp 函数
+  const clamp0to100 = u.clamp(0, 100);
+  function updClamp() {
+    const v = +clampIn.value, r = clamp0to100(v);
+    document.getElementById('clampOut').innerHTML =
+      `clamp(0, 100, <span class="in">${v}</span>) → <b>${r}</b>` +
+      (v !== r ? '　<span style="opacity:.5">（越界，被卡住）</span>' : '');
+    document.getElementById('clampDot').style.left = u.mapRange(-60, 160, 0, 100, v) + '%';
+  }
+  clampIn.oninput = updClamp; updClamp();
+
+  // ---------- mapRange ----------
+  const mapIn = document.getElementById('mapIn');
+  function updMap() {
+    const v = +mapIn.value;
+    const opacity = u.mapRange(0, 1000, 0, 1, v);
+    const hue = u.mapRange(0, 1000, 160, 260, v);
+    document.getElementById('mapOut').innerHTML =
+      `滚动 <span class="in">${v}</span>px<br>` +
+      `mapRange(0, 1000, 0, 1, v) → <b>${opacity.toFixed(3)}</b>　(透明度)<br>` +
+      `mapRange(0, 1000, 160, 260, v) → <b>${hue.toFixed(0)}</b>　(色相)`;
+    document.getElementById('mapSwatch').style.background = `hsl(${hue} 70% 55%)`;
+    document.getElementById('mapSwatch').style.opacity = 0.25 + opacity * 0.75;
+  }
+  mapIn.oninput = updMap; updMap();
+
+  // ---------- normalize ----------
+  const normIn = document.getElementById('normIn');
+  function updNorm() {
+    const v = +normIn.value, r = u.normalize(120, 480, v);
+    document.getElementById('normOut').innerHTML =
+      `normalize(120, 480, <span class="in">${v}</span>) → <b>${r.toFixed(3)}</b>　<span style="opacity:.5">即 ${(r*100).toFixed(1)}% 进度</span>`;
+    document.getElementById('normDot').style.left = r * 100 + '%';
+  }
+  normIn.oninput = updNorm; updNorm();
+
+  // ---------- interpolate ----------
+  const lerpIn = document.getElementById('lerpIn');
+  // 颜色插值：GSAP 会自动识别颜色字符串
+  const colorLerp = u.interpolate('#58e6a8', '#f85149');
+  function updLerp() {
+    const p = +lerpIn.value / 100;
+    const num = u.interpolate(0, 500, p);
+    const col = colorLerp(p);
+    const obj = u.interpolate({ x: 0, scale: 1 }, { x: 300, scale: 2 }, p);
+    document.getElementById('lerpOut').innerHTML =
+      `progress = <span class="in">${p.toFixed(2)}</span><br>` +
+      `interpolate(0, 500, p) → <b>${num.toFixed(1)}</b><br>` +
+      `interpolate("#58e6a8", "#f85149", p) → <b>${col}</b><br>` +
+      `对象插值 → <b>{ x: ${obj.x.toFixed(0)}, scale: ${obj.scale.toFixed(2)} }</b>`;
+    document.getElementById('lerpSwatch').style.background = col;
+  }
+  lerpIn.oninput = updLerp; updLerp();
+
+  // ---------- snap ----------
+  const snapGrid = document.getElementById('snapGrid');
+  const snapDot = document.getElementById('snapDot');
+  const snapStep = document.getElementById('snapStep');
+  snapGrid.addEventListener('mousemove', e => {
+    const r = snapGrid.getBoundingClientRect();
+    const step = +snapStep.value;
+    // snap 省略 value 得到可复用函数，这里直接给全参数
+    const sx = u.snap(step, e.clientX - r.left);
+    const sy = u.snap(step, e.clientY - r.top);
+    gsap.to(snapDot, { left: sx, top: sy, duration: 0.18, ease: 'power2.out' });
+    document.getElementById('snapOut').innerHTML =
+      `鼠标 <span class="in">(${(e.clientX-r.left).toFixed(0)}, ${(e.clientY-r.top).toFixed(0)})</span> → snap(${step}) → <b>(${sx}, ${sy})</b>`;
+  });
+  snapStep.oninput = () => {
+    snapGrid.style.backgroundSize = `${snapStep.value}px ${snapStep.value}px`;
+  };
+  document.getElementById('snapOut').innerHTML = '把鼠标移到上面的格子里';
+
+  // ---------- wrap ----------
+  const wrapIn = document.getElementById('wrapIn');
+  function updWrap() {
+    const v = +wrapIn.value;
+    const trackW = document.getElementById('wrapTrack').clientWidth - 22;
+    const wrapped = u.wrap(0, trackW, v);
+    document.getElementById('wrapBox').style.left = wrapped + 'px';
+    document.getElementById('wrapOut').innerHTML =
+      `wrap(0, ${trackW}, <span class="in">${v}</span>) → <b>${wrapped.toFixed(0)}</b>` +
+      (v > trackW ? '　<span style="opacity:.5">（超出后从左端绕回）</span>' : '');
+  }
+  wrapIn.oninput = updWrap; setTimeout(updWrap, 0);
+
+  // ---------- random ----------
+  const randSnap = document.getElementById('randSnap');
+  const randDots = document.getElementById('randDots');
+  for (let i = 0; i < 30; i++) randDots.appendChild(document.createElement('span'));
+  function rollRandom() {
+    const snapTo = +randSnap.value;
+    const vals = [];
+    randDots.querySelectorAll('span').forEach(d => {
+      // 第三个参数是吸附步长：0 表示不吸附，纯连续随机
+      const v = snapTo ? u.random(0, 100, snapTo) : u.random(0, 100);
+      vals.push(v.toFixed(snapTo ? 0 : 1));
+      gsap.to(d, {
+        backgroundColor: `hsl(${u.mapRange(0, 100, 150, 260, v)} 65% ${30 + v * 0.35}%)`,
+        duration: 0.3
+      });
+    });
+    // 也能直接从数组里随机抽一个
+    const pick = u.random(['power2.out', 'back.out(2)', 'elastic.out(1,0.4)', 'bounce.out']);
+    document.getElementById('randOut').innerHTML =
+      `random(0, 100${snapTo ? ', ' + snapTo : ''}) 取 30 次：<br><b>${vals.slice(0, 8).join(', ')} …</b><br>` +
+      `random(["power2.out", …]) → <b>${pick}</b>　<span style="opacity:.5">（从数组随机抽）</span>`;
+  }
+  randSnap.oninput = rollRandom;
+  rollRandom();
+  setInterval(rollRandom, 2200);
+
+  // ---------- pipe ----------
+  const pipeIn = document.getElementById('pipeIn');
+  // 流水线：先夹取到 0~300，再映射到 0~1，最后吸附到 0.25 的倍数
+  const pipeline = u.pipe(
+    u.clamp(0, 300),
+    u.mapRange(0, 300, 0, 1),
+    u.snap(0.25)
+  );
+  function updPipe() {
+    const v = +pipeIn.value;
+    document.getElementById('pipeOut').innerHTML =
+      `pipe(clamp(0,300), mapRange(0,300,0,1), snap(0.25))<br>` +
+      `输入 <span class="in">${v}</span> → <b>${pipeline(v)}</b>`;
+  }
+  pipeIn.oninput = updPipe; updPipe();
+
+  // ---------- toArray ----------
+  const arrDots = document.getElementById('arrDots');
+  for (let i = 0; i < 12; i++) arrDots.appendChild(document.createElement('span'));
+  // toArray 之后就能用原生数组方法，这里挑出偶数索引点亮
+  const arr = u.toArray('#arrDots span');
+  arr.filter((_, i) => i % 2 === 0).forEach(el => el.style.background = '#58e6a8');
+  document.getElementById('arrOut').innerHTML =
+    `gsap.utils.toArray("#arrDots span") → <b>Array(${arr.length})</b><br>` +
+    `之后可直接 <b>.filter((_, i) =&gt; i % 2 === 0)</b> 挑出偶数项（已点亮）`;
+
+  // ---------- unitize / splitColor ----------
+  // unitize 包一层，就能把纯数字工具用在 "120px" 这类带单位的值上
+  const clampPx = u.unitize(u.clamp(0, 100), 'px');
+  document.getElementById('miscOut').innerHTML =
+    `unitize(clamp(0,100), "px")("180px") → <b>${clampPx('180px')}</b><br>` +
+    `splitColor("#58e6a8") → <b>[${u.splitColor('#58e6a8').join(', ')}]</b>　<span style="opacity:.5">(RGB)</span><br>` +
+    `splitColor("#58e6a8", true) → <b>[${u.splitColor('#58e6a8', true).map(n => n.toFixed(0)).join(', ')}]</b>　<span style="opacity:.5">(HSL)</span>`;
+
+  window.addEventListener('resize', updWrap);
+</script>
+</body>
+</html>
