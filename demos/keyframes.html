@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>关键帧 keyframes · 一条 tween 走多段</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh; padding: 40px 24px;
+    display: flex; flex-direction: column; align-items: center; gap: 24px;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .sub { font-size: 14px; opacity: .55; margin-top: -14px; text-align: center; max-width: 660px; line-height: 1.7; }
+  .row { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; width: min(1000px, 100%); }
+  .col {
+    flex: 1 1 300px; background: #161b22; border: 1px solid #30363d;
+    border-radius: 14px; padding: 18px;
+  }
+  .ctitle { font-size: 14px; font-weight: 600; color: #58e6a8; margin-bottom: 4px; }
+  .cdesc { font-size: 12px; opacity: .5; margin-bottom: 14px; line-height: 1.6; }
+  .field {
+    height: 130px; border-radius: 10px; background: #0d1117;
+    border: 1px solid #21262d; position: relative; overflow: hidden;
+  }
+  .mover {
+    position: absolute; left: 16px; top: 46px; width: 38px; height: 38px;
+    border-radius: 10px; background: linear-gradient(135deg, #58e6a8, #3b82f6);
+  }
+  pre {
+    background: #0d1117; border: 1px solid #21262d; border-radius: 8px;
+    padding: 12px 14px; font-size: 12px; line-height: 1.7; margin-top: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #8b949e; overflow-x: auto;
+  }
+  pre .k { color: #58e6a8; }
+  pre .c { color: #6e7681; }
+  button {
+    background: #58e6a8; color: #0d1117; border: 0; border-radius: 24px;
+    padding: 11px 30px; font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  .note {
+    font-size: 13px; color: #8b949e; max-width: 720px; text-align: center;
+    line-height: 1.9; border-top: 1px solid #21262d; padding-top: 18px;
+  }
+  .note b { color: #58e6a8; }
+</style>
+</head>
+<body>
+  <h1>关键帧 keyframes</h1>
+  <p class="sub">
+    同一个元素要连着走好几段（右 → 上 → 左 → 落回），不必写四条 tween，
+    <b>一条 tween 里写 keyframes 就够</b>，还能给每一段单独设 ease 和时长。
+  </p>
+
+  <div class="row">
+    <div class="col">
+      <div class="ctitle">写法一 · 数组关键帧</div>
+      <div class="cdesc">每一项是一个状态，按顺序走。段与段之间可以各自设 duration、ease、delay。</div>
+      <div class="field"><div class="mover" id="m1"></div></div>
+      <pre>gsap.to(box, {
+  keyframes: [
+    { x: 200, duration: 0.5 },
+    { y: -60, duration: 0.4, ease: <span class="k">"back.out(2)"</span> },
+    { x: 0,   duration: 0.5 },
+    { y: 0,   duration: 0.35, ease: <span class="k">"bounce.out"</span> }
+  ]
+});</pre>
+    </div>
+
+    <div class="col">
+      <div class="ctitle">写法二 · 百分比关键帧</div>
+      <div class="cdesc">跟 CSS @keyframes 一个思路：按总时长的百分比定位，适合从设计稿翻译过来。</div>
+      <div class="field"><div class="mover" id="m2"></div></div>
+      <pre>gsap.to(box, {
+  duration: 2,
+  keyframes: {
+    <span class="k">"0%"</span>:   { x: 0,   y: 0,   scale: 1 },
+    <span class="k">"30%"</span>:  { x: 200, y: -40, scale: 1.3 },
+    <span class="k">"60%"</span>:  { x: 200, y: 40,  rotate: 180 },
+    <span class="k">"100%"</span>: { x: 0,   y: 0,   rotate: 360, scale: 1 },
+    easeEach: <span class="k">"power2.inOut"</span>
+  }
+});</pre>
+    </div>
+
+    <div class="col">
+      <div class="ctitle">写法三 · 属性内联关键帧</div>
+      <div class="cdesc">直接给某个属性一个数组，GSAP 会在这些值之间依次补间。写抖动、脉冲最省事。</div>
+      <div class="field"><div class="mover" id="m3"></div></div>
+      <pre>gsap.to(box, {
+  duration: 1.6,
+  x: [0, 180, 60, 220, 0],
+  scale: [1, 1.35, 0.85, 1.2, 1],
+  ease: <span class="k">"power1.inOut"</span>
+});</pre>
+    </div>
+  </div>
+
+  <button id="play">▶ 三种写法同时播放</button>
+
+  <p class="note">
+    关键帧和时间轴不冲突：<b>单个元素的多段连续变化</b>用 keyframes 最简洁；
+    <b>多个元素之间的先后编排</b>才该上 timeline。<br>
+    数组写法里 <b>delay</b> 表示与前一段的间隔，写负值就能让两段重叠。
+  </p>
+
+<script src="../lib/gsap.min.js"></script>
+<script>
+  function play() {
+    gsap.killTweensOf(['#m1', '#m2', '#m3']);
+    gsap.set(['#m1', '#m2', '#m3'], { x: 0, y: 0, rotate: 0, scale: 1 });
+
+    // 写法一：数组关键帧，逐段推进，每段可单独定制
+    gsap.to('#m1', {
+      keyframes: [
+        { x: 200, duration: 0.5 },
+        { y: -60, duration: 0.4, ease: 'back.out(2)' },
+        { x: 0,   duration: 0.5 },
+        { y: 0,   duration: 0.35, ease: 'bounce.out' }
+      ]
+    });
+
+    // 写法二：百分比关键帧，easeEach 给每段统一 ease
+    gsap.to('#m2', {
+      duration: 2,
+      keyframes: {
+        '0%':   { x: 0,   y: 0,   scale: 1 },
+        '30%':  { x: 200, y: -40, scale: 1.3 },
+        '60%':  { x: 200, y: 40,  rotate: 180 },
+        '100%': { x: 0,   y: 0,   rotate: 360, scale: 1 },
+        easeEach: 'power2.inOut'
+      }
+    });
+
+    // 写法三：属性值直接给数组，最省事的抖动/脉冲写法
+    gsap.to('#m3', {
+      duration: 1.6,
+      x: [0, 180, 60, 220, 0],
+      scale: [1, 1.35, 0.85, 1.2, 1],
+      ease: 'power1.inOut'
+    });
+  }
+
+  document.getElementById('play').addEventListener('click', play);
+  play();
+</script>
+</body>
+</html>

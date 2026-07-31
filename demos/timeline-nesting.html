@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>嵌套时间轴 · 复杂动画的拆分之道</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh; padding: 40px 24px;
+    display: flex; flex-direction: column; align-items: center; gap: 22px;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .sub { font-size: 14px; opacity: .55; margin-top: -14px; text-align: center; max-width: 660px; line-height: 1.7; }
+  .stage {
+    width: min(760px, 100%); height: 300px; position: relative;
+    background: #161b22; border: 1px solid #30363d; border-radius: 14px; overflow: hidden;
+  }
+  .scene { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 18px; }
+  .dot { width: 44px; height: 44px; border-radius: 50%; }
+  .s1 .dot { background: #58e6a8; }
+  .s2 .dot { background: #3b82f6; border-radius: 10px; }
+  .s3 .dot { background: #f0883e; }
+  .scene .cap {
+    position: absolute; top: 28px; left: 0; right: 0; text-align: center;
+    font-size: 14px; opacity: .6;
+  }
+  .sublines { width: min(760px, 100%); display: flex; flex-direction: column; gap: 10px; }
+  .line { display: flex; align-items: center; gap: 12px; }
+  .lname {
+    width: 92px; font-size: 12px; font-family: ui-monospace, Menlo, monospace;
+    text-align: right; opacity: .75;
+  }
+  .lbar { flex: 1; height: 12px; background: #161b22; border: 1px solid #21262d; border-radius: 6px; position: relative; overflow: hidden; }
+  .lfill { position: absolute; top: 0; bottom: 0; left: 0; width: 0; border-radius: 6px; }
+  .btns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  button {
+    background: #161b22; color: #58e6a8; border: 1px solid #30363d;
+    border-radius: 8px; padding: 9px 18px; font-size: 14px;
+    font-family: inherit; cursor: pointer;
+  }
+  button:hover { border-color: #58e6a8; background: #1c2530; }
+  pre {
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    padding: 14px 18px; font-size: 13px; line-height: 1.75;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #8b949e; width: min(760px, 100%); overflow-x: auto;
+  }
+  pre .k { color: #58e6a8; }
+  pre .c { color: #6e7681; }
+</style>
+</head>
+<body>
+  <h1>嵌套时间轴</h1>
+  <p class="sub">
+    真实项目里一条大时间轴动辄几十行，改一处全乱。正确做法是<b>每个场景写成独立的小时间轴</b>，
+    再用一条 master 把它们拼起来——每一段都能单独调试、单独复用。
+  </p>
+
+  <div class="stage">
+    <div class="scene s1"><div class="cap">场景一 · 圆点脉冲</div>
+      <div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    </div>
+    <div class="scene s2"><div class="cap">场景二 · 方块旋转</div>
+      <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    </div>
+    <div class="scene s3"><div class="cap">场景三 · 汇聚落定</div>
+      <div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    </div>
+  </div>
+
+  <div class="sublines">
+    <div class="line"><div class="lname">master</div><div class="lbar"><div class="lfill" id="fM" style="background:#e6edf3"></div></div></div>
+    <div class="line"><div class="lname">scene1()</div><div class="lbar"><div class="lfill" id="f1" style="background:#58e6a8"></div></div></div>
+    <div class="line"><div class="lname">scene2()</div><div class="lbar"><div class="lfill" id="f2" style="background:#3b82f6"></div></div></div>
+    <div class="line"><div class="lname">scene3()</div><div class="lbar"><div class="lfill" id="f3" style="background:#f0883e"></div></div></div>
+  </div>
+
+  <div class="btns">
+    <button id="all">▶ 播放整条 master</button>
+    <button id="only1">只播场景一</button>
+    <button id="only2">只播场景二</button>
+    <button id="only3">只播场景三</button>
+  </div>
+
+  <pre><span class="c">// 每个场景是一个返回 timeline 的函数，可独立播放、独立调试</span>
+<span class="k">function</span> scene1() {
+  <span class="k">const</span> tl = gsap.timeline();
+  tl.from(<span class="k">".s1 .dot"</span>, { scale: 0, stagger: 0.1, ease: <span class="k">"back.out(2)"</span> })
+    .to(<span class="k">".s1 .dot"</span>, { scale: 1.4, yoyo: <span class="k">true</span>, repeat: 1, stagger: 0.08 });
+  <span class="k">return</span> tl;
+}
+
+<span class="c">// master 用 .add() 把子时间轴拼起来，第二个参数还是位置参数</span>
+<span class="k">const</span> master = gsap.timeline();
+master.add(scene1())
+      .add(scene2(), <span class="k">"-=0.2"</span>)   <span class="c">// 和上一段重叠 0.2s</span>
+      .add(scene3(), <span class="k">"+=0.1"</span>);
+
+<span class="c">// 整条能变速：master.timeScale(2) 会同时影响所有子时间轴</span></pre>
+
+<script src="../lib/gsap.min.js"></script>
+<script>
+  // 三个场景各自独立成函数，返回自己的时间轴
+  function scene1() {
+    const tl = gsap.timeline();
+    tl.set('.s1', { autoAlpha: 1 })
+      .from('.s1 .dot', { scale: 0, stagger: 0.1, duration: 0.4, ease: 'back.out(2)' })
+      .to('.s1 .dot', { scale: 1.4, yoyo: true, repeat: 1, duration: 0.28, stagger: 0.08 })
+      .to('.s1', { autoAlpha: 0, duration: 0.3 });
+    return tl;
+  }
+
+  function scene2() {
+    const tl = gsap.timeline();
+    tl.set('.s2', { autoAlpha: 1 })
+      .from('.s2 .dot', { x: -160, rotate: -180, opacity: 0, stagger: 0.12, duration: 0.5, ease: 'power3.out' })
+      .to('.s2 .dot', { rotate: '+=360', duration: 0.7, stagger: 0.06, ease: 'power2.inOut' })
+      .to('.s2', { autoAlpha: 0, duration: 0.3 });
+    return tl;
+  }
+
+  function scene3() {
+    const tl = gsap.timeline();
+    tl.set('.s3', { autoAlpha: 1 })
+      .from('.s3 .dot', {
+        x: () => gsap.utils.random(-260, 260),
+        y: () => gsap.utils.random(-120, 120),
+        scale: 0, opacity: 0, duration: 0.7, stagger: 0.06, ease: 'power3.out'
+      })
+      .to('.s3 .dot', { y: -18, yoyo: true, repeat: 1, duration: 0.25, stagger: 0.05, ease: 'sine.inOut' });
+    return tl;
+  }
+
+  // 初始把三个场景都藏起来，由各自时间轴负责显隐
+  gsap.set(['.s1', '.s2', '.s3'], { autoAlpha: 0 });
+
+  let master, subs = [];
+
+  function buildMaster() {
+    if (master) master.kill();
+    gsap.set(['.s1', '.s2', '.s3'], { autoAlpha: 0, clearProps: 'transform' });
+    gsap.set('.dot', { clearProps: 'all' });
+
+    const s1 = scene1(), s2 = scene2(), s3 = scene3();
+    subs = [s1, s2, s3];
+
+    master = gsap.timeline({
+      onUpdate() {
+        // 主进度条 + 每个子时间轴各自的进度条
+        document.getElementById('fM').style.width = master.progress() * 100 + '%';
+        ['f1', 'f2', 'f3'].forEach((id, i) => {
+          document.getElementById(id).style.width = subs[i].progress() * 100 + '%';
+        });
+      }
+    });
+    master.add(s1).add(s2, '-=0.2').add(s3, '+=0.1');
+    return master;
+  }
+
+  document.getElementById('all').onclick = () => buildMaster().restart();
+
+  // 单独播放某个场景：子时间轴本身就是完整可用的动画对象
+  function playOnly(fn) {
+    if (master) master.kill();
+    gsap.set(['.s1', '.s2', '.s3'], { autoAlpha: 0 });
+    gsap.set('.dot', { clearProps: 'all' });
+    ['fM', 'f1', 'f2', 'f3'].forEach(id => document.getElementById(id).style.width = '0%');
+    const tl = fn();
+    const bar = { scene1: 'f1', scene2: 'f2', scene3: 'f3' }[fn.name];
+    tl.eventCallback('onUpdate', () => {
+      document.getElementById(bar).style.width = tl.progress() * 100 + '%';
+    });
+  }
+  document.getElementById('only1').onclick = () => playOnly(scene1);
+  document.getElementById('only2').onclick = () => playOnly(scene2);
+  document.getElementById('only3').onclick = () => playOnly(scene3);
+
+  buildMaster();
+</script>
+</body>
+</html>

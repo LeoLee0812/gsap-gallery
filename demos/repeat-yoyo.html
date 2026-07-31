@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>循环 · repeat / yoyo / repeatDelay</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh; padding: 40px 24px;
+    display: flex; flex-direction: column; align-items: center; gap: 24px;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .sub { font-size: 14px; opacity: .55; margin-top: -14px; text-align: center; max-width: 660px; line-height: 1.7; }
+  .grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 14px; width: min(1080px, 100%);
+  }
+  .cell {
+    background: #161b22; border: 1px solid #30363d; border-radius: 14px; padding: 16px 18px;
+  }
+  .ctitle {
+    font-size: 13px; font-weight: 600; color: #58e6a8;
+    font-family: ui-monospace, Menlo, monospace; margin-bottom: 4px;
+  }
+  .cdesc { font-size: 12px; opacity: .5; margin-bottom: 12px; line-height: 1.6; min-height: 32px; }
+  .field {
+    height: 62px; border-radius: 10px; background: #0d1117;
+    border: 1px solid #21262d; position: relative; overflow: hidden;
+  }
+  .mover {
+    position: absolute; left: 8px; top: 13px; width: 34px; height: 34px;
+    border-radius: 9px; background: linear-gradient(135deg, #58e6a8, #3b82f6);
+  }
+  .counter {
+    font-size: 11px; opacity: .45; margin-top: 8px;
+    font-family: ui-monospace, Menlo, monospace;
+  }
+  .real {
+    width: min(1080px, 100%); background: #161b22; border: 1px solid #30363d;
+    border-radius: 14px; padding: 22px 24px;
+  }
+  .rtitle { font-size: 14px; font-weight: 600; margin-bottom: 16px; opacity: .8; }
+  .rrow { display: flex; gap: 34px; flex-wrap: wrap; align-items: center; justify-content: center; }
+  .ritem { text-align: center; }
+  .rlabel { font-size: 12px; opacity: .5; margin-top: 10px; }
+  .pulse-btn {
+    padding: 12px 28px; border-radius: 24px; border: 0;
+    background: #58e6a8; color: #0d1117; font-weight: 700; font-size: 15px;
+  }
+  .breathe { width: 54px; height: 54px; border-radius: 50%; background: #3b82f6; margin: 0 auto; }
+  .loader { display: flex; gap: 6px; justify-content: center; }
+  .loader i { width: 9px; height: 26px; border-radius: 4px; background: #58e6a8; display: block; }
+  .heart { font-size: 40px; line-height: 1; }
+  button.replay {
+    background: #161b22; color: #58e6a8; border: 1px solid #30363d;
+    border-radius: 8px; padding: 9px 22px; font-size: 14px; cursor: pointer; font-family: inherit;
+  }
+</style>
+</head>
+<body>
+  <h1>循环：repeat / yoyo / repeatDelay</h1>
+  <p class="sub">
+    待机动效（呼吸按钮、加载指示、跑马灯）全靠这三个参数。
+    <b>repeat: -1</b> 是无限循环，配上 <b>yoyo</b> 才会「来回」而不是「瞬回」。
+  </p>
+
+  <div class="grid">
+    <div class="cell">
+      <div class="ctitle">repeat: 2</div>
+      <div class="cdesc">重复 2 次 = 一共播 3 遍。每遍结束<b>瞬间跳回起点</b>，会有明显的断点感。</div>
+      <div class="field"><div class="mover" id="a"></div></div>
+      <div class="counter" id="ca">循环次数：0</div>
+    </div>
+
+    <div class="cell">
+      <div class="ctitle">repeat: 2, yoyo: true</div>
+      <div class="cdesc">加上 yoyo 后奇数遍<b>倒着播</b>，来回往复，衔接自然。呼吸类动效必备。</div>
+      <div class="field"><div class="mover" id="b"></div></div>
+      <div class="counter" id="cb">循环次数：0</div>
+    </div>
+
+    <div class="cell">
+      <div class="ctitle">repeat: -1, repeatDelay: 0.6</div>
+      <div class="cdesc">无限循环，每遍之间<b>停 0.6 秒</b>。用来做「间歇性提示」，不至于一直晃得人烦。</div>
+      <div class="field"><div class="mover" id="c"></div></div>
+      <div class="counter" id="cc">循环次数：0</div>
+    </div>
+
+    <div class="cell">
+      <div class="ctitle">repeat: -1, repeatRefresh: true</div>
+      <div class="cdesc">每一遍<b>重新计算函数式取值</b>，所以每次落点都不一样——粒子、随机浮动靠它。</div>
+      <div class="field"><div class="mover" id="d"></div></div>
+      <div class="counter" id="cd">循环次数：0</div>
+    </div>
+  </div>
+
+  <div class="real">
+    <div class="rtitle">四个真实用法（都在无限循环中）</div>
+    <div class="rrow">
+      <div class="ritem">
+        <button class="pulse-btn" id="cta">立即开始</button>
+        <div class="rlabel">CTA 呼吸脉冲</div>
+      </div>
+      <div class="ritem">
+        <div class="breathe" id="breathe"></div>
+        <div class="rlabel">录音/在线状态圈</div>
+      </div>
+      <div class="ritem">
+        <div class="loader"><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="rlabel">条形加载指示</div>
+      </div>
+      <div class="ritem">
+        <div class="heart" id="heart">❤️</div>
+        <div class="rlabel">心跳（双跳节奏）</div>
+      </div>
+    </div>
+  </div>
+
+  <button class="replay" id="replay">↻ 重新播放上方四组对比</button>
+
+<script src="../lib/gsap.min.js"></script>
+<script>
+  // 四种循环参数的对比。onRepeat 用来累计已完成的循环次数
+  function runComparisons() {
+    ['a', 'b', 'c', 'd'].forEach(id => {
+      gsap.killTweensOf('#' + id);
+      document.getElementById('c' + id).textContent = '循环次数：0';
+    });
+    gsap.set(['#a', '#b', '#c', '#d'], { x: 0 });
+
+    const dist = document.querySelector('.field').clientWidth - 34 - 16;
+
+    let n = { a: 0, b: 0, c: 0, d: 0 };
+    const bump = k => () => {
+      n[k]++;
+      document.getElementById('c' + k).textContent = '循环次数：' + n[k];
+    };
+
+    gsap.to('#a', { x: dist, duration: 1, ease: 'power1.inOut', repeat: 2, onRepeat: bump('a') });
+    gsap.to('#b', { x: dist, duration: 1, ease: 'power1.inOut', repeat: 2, yoyo: true, onRepeat: bump('b') });
+    gsap.to('#c', { x: dist, duration: 0.8, ease: 'power2.inOut', repeat: -1, repeatDelay: 0.6, yoyo: true, onRepeat: bump('c') });
+    // repeatRefresh 让函数式取值在每次循环时重新求值，所以每遍落点随机
+    gsap.to('#d', {
+      x: () => gsap.utils.random(0, dist),
+      duration: 0.8, ease: 'power2.inOut',
+      repeat: -1, repeatRefresh: true, onRepeat: bump('d')
+    });
+  }
+
+  document.getElementById('replay').addEventListener('click', runComparisons);
+  runComparisons();
+
+  // ---- 四个真实用法 ----
+
+  // CTA 呼吸：轻微缩放 + 阴影，幅度一定要小，大了就廉价
+  gsap.to('#cta', {
+    scale: 1.06, duration: 0.9, ease: 'sine.inOut', repeat: -1, yoyo: true
+  });
+
+  // 在线状态圈：本体脉动 + 一圈扩散涟漪
+  gsap.to('#breathe', { scale: 1.12, opacity: .75, duration: 1, ease: 'sine.inOut', repeat: -1, yoyo: true });
+
+  // 条形加载：stagger 制造波浪，yoyo 让它来回起伏
+  gsap.to('.loader i', {
+    scaleY: 0.35, transformOrigin: 'center',
+    duration: 0.45, ease: 'sine.inOut',
+    repeat: -1, yoyo: true, stagger: { each: 0.09, repeat: -1, yoyo: true }
+  });
+
+  // 心跳：用 keyframes 做「咚-咚，停」的双跳节奏，再整体无限循环
+  gsap.to('#heart', {
+    keyframes: [
+      { scale: 1.28, duration: 0.14, ease: 'power2.out' },
+      { scale: 1,    duration: 0.14, ease: 'power2.in' },
+      { scale: 1.18, duration: 0.12, ease: 'power2.out' },
+      { scale: 1,    duration: 0.18, ease: 'power2.in' }
+    ],
+    repeat: -1, repeatDelay: 0.55
+  });
+</script>
+</body>
+</html>

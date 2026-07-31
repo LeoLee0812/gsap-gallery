@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Timeline 位置参数可视化</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh; padding: 40px 24px;
+    display: flex; flex-direction: column; align-items: center; gap: 24px;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .sub { font-size: 14px; opacity: .55; margin-top: -14px; text-align: center; max-width: 620px; }
+  .modes { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .opt {
+    background: #161b22; color: #8b949e; border: 1px solid #30363d;
+    border-radius: 8px; padding: 8px 14px; font-size: 13px;
+    font-family: ui-monospace, Menlo, monospace; cursor: pointer; transition: all .16s;
+  }
+  .opt:hover { border-color: #58e6a8; color: #e6edf3; }
+  .opt.on { background: #58e6a8; color: #0d1117; border-color: #58e6a8; font-weight: 600; }
+  .stage {
+    background: #161b22; border: 1px solid #30363d; border-radius: 14px;
+    padding: 24px; width: min(760px, 100%);
+  }
+  .lane { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+  .lane:last-child { margin-bottom: 0; }
+  .tag {
+    width: 26px; height: 26px; border-radius: 8px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; color: #0d1117;
+  }
+  .rail {
+    flex: 1; height: 34px; border-radius: 10px;
+    background: #0d1117; border: 1px solid #21262d; position: relative;
+  }
+  .runner {
+    position: absolute; top: 4px; left: 4px; width: 26px; height: 26px;
+    border-radius: 8px;
+  }
+  /* 甘特条：直观显示每条 tween 在时间轴上占据的区间 */
+  .gantt {
+    width: min(760px, 100%); background: #161b22;
+    border: 1px solid #30363d; border-radius: 14px; padding: 20px 24px;
+  }
+  .gtitle { font-size: 12px; opacity: .5; margin-bottom: 12px; }
+  .grow { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; height: 20px; }
+  .glabel { width: 20px; font-size: 12px; font-weight: 700; }
+  .gtrack { flex: 1; height: 14px; background: #0d1117; border-radius: 7px; position: relative; }
+  .gbar { position: absolute; height: 100%; border-radius: 7px; opacity: .85; }
+  .playhead {
+    position: absolute; top: -6px; bottom: -6px; width: 2px;
+    background: #f85149; left: 0;
+  }
+  .ph-wrap { position: relative; margin-top: 4px; }
+  .controls { display: flex; gap: 10px; align-items: center; }
+  button {
+    background: #161b22; color: #58e6a8; border: 1px solid #30363d;
+    border-radius: 8px; padding: 9px 20px; font-size: 14px;
+    font-family: inherit; cursor: pointer;
+  }
+  button:hover { border-color: #58e6a8; }
+  pre {
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    padding: 14px 18px; font-size: 13px; line-height: 1.75;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #8b949e; width: min(760px, 100%); overflow-x: auto;
+  }
+  pre .k { color: #58e6a8; }
+  pre .c { color: #6e7681; }
+  .explain {
+    font-size: 13px; color: #8b949e; max-width: 700px; text-align: center; line-height: 1.8;
+  }
+  .explain b { color: #58e6a8; }
+</style>
+</head>
+<body>
+  <h1>Timeline 位置参数</h1>
+  <p class="sub">
+    时间轴的第三个参数决定「这条动画什么时候开始」。它是新手最容易糊涂、也是最值钱的一个参数。
+  </p>
+
+  <div class="modes" id="modes">
+    <button class="opt on" data-mode="default">默认（依次排队）</button>
+    <button class="opt" data-mode="lt">"&lt;" 同时开始</button>
+    <button class="opt" data-mode="lt02">"&lt;0.2" 前一条开始后 0.2s</button>
+    <button class="opt" data-mode="minus">"-=0.3" 提前 0.3s 重叠</button>
+    <button class="opt" data-mode="plus">"+=0.4" 延后 0.4s 留白</button>
+    <button class="opt" data-mode="abs">绝对时间 0 / 0.5 / 1</button>
+    <button class="opt" data-mode="label">标签 "sync"</button>
+  </div>
+
+  <div class="stage">
+    <div class="lane"><div class="tag" style="background:#58e6a8">A</div><div class="rail"><div class="runner" id="rA" style="background:#58e6a8"></div></div></div>
+    <div class="lane"><div class="tag" style="background:#3b82f6">B</div><div class="rail"><div class="runner" id="rB" style="background:#3b82f6"></div></div></div>
+    <div class="lane"><div class="tag" style="background:#f0883e">C</div><div class="rail"><div class="runner" id="rC" style="background:#f0883e"></div></div></div>
+  </div>
+
+  <div class="gantt">
+    <div class="gtitle">时间轴占位（横轴为秒）</div>
+    <div class="ph-wrap">
+      <div class="grow"><div class="glabel" style="color:#58e6a8">A</div><div class="gtrack"><div class="gbar" id="gA" style="background:#58e6a8"></div></div></div>
+      <div class="grow"><div class="glabel" style="color:#3b82f6">B</div><div class="gtrack"><div class="gbar" id="gB" style="background:#3b82f6"></div></div></div>
+      <div class="grow"><div class="glabel" style="color:#f0883e">C</div><div class="gtrack"><div class="gbar" id="gC" style="background:#f0883e"></div></div></div>
+      <div class="playhead" id="playhead"></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="replay">▶ 重新播放</button>
+    <button id="slow">🐢 0.3 倍速</button>
+  </div>
+
+  <pre id="code"></pre>
+  <p class="explain" id="explain"></p>
+
+<script src="../lib/gsap.min.js"></script>
+<script>
+  const runners = { A: '#rA', B: '#rB', C: '#rC' };
+  let tl = null;
+
+  // 每种模式：位置参数 + 代码回显 + 一句话解释
+  const MODES = {
+    default: {
+      pos: [undefined, undefined, undefined],
+      code: `tl.to("<span class="k">.A</span>", { x: 400 })\n  .to("<span class="k">.B</span>", { x: 400 })\n  .to("<span class="k">.C</span>", { x: 400 });`,
+      note: '不写第三个参数时，每条动画<b>接在前一条结束之后</b>——这是默认行为，也是最常见的排队。'
+    },
+    lt: {
+      pos: [undefined, '<', '<'],
+      code: `tl.to("<span class="k">.A</span>", { x: 400 })\n  .to("<span class="k">.B</span>", { x: 400 }, <span class="k">"&lt;"</span>)\n  .to("<span class="k">.C</span>", { x: 400 }, <span class="k">"&lt;"</span>);`,
+      note: '<b>"&lt;"</b> 表示「和刚添加的那条<b>同时开始</b>」。三条完全并行。'
+    },
+    lt02: {
+      pos: [undefined, '<0.2', '<0.2'],
+      code: `tl.to("<span class="k">.A</span>", { x: 400 })\n  .to("<span class="k">.B</span>", { x: 400 }, <span class="k">"&lt;0.2"</span>)\n  .to("<span class="k">.C</span>", { x: 400 }, <span class="k">"&lt;0.2"</span>);`,
+      note: '<b>"&lt;0.2"</b> = 前一条<b>开始后</b> 0.2 秒。这就是手写 stagger 的效果，级联感最好。'
+    },
+    minus: {
+      pos: [undefined, '-=0.3', '-=0.3'],
+      code: `tl.to("<span class="k">.A</span>", { x: 400 })\n  .to("<span class="k">.B</span>", { x: 400 }, <span class="k">"-=0.3"</span>)\n  .to("<span class="k">.C</span>", { x: 400 }, <span class="k">"-=0.3"</span>);`,
+      note: '<b>"-=0.3"</b> = 比前一条<b>结束时间提前</b> 0.3 秒插入，动画之间产生重叠，衔接更顺。'
+    },
+    plus: {
+      pos: [undefined, '+=0.4', '+=0.4'],
+      code: `tl.to("<span class="k">.A</span>", { x: 400 })\n  .to("<span class="k">.B</span>", { x: 400 }, <span class="k">"+=0.4"</span>)\n  .to("<span class="k">.C</span>", { x: 400 }, <span class="k">"+=0.4"</span>);`,
+      note: '<b>"+=0.4"</b> = 前一条结束后<b>再等</b> 0.4 秒。用来制造呼吸和停顿。'
+    },
+    abs: {
+      pos: [0, 0.5, 1],
+      code: `tl.to("<span class="k">.A</span>", { x: 400 }, <span class="k">0</span>)\n  .to("<span class="k">.B</span>", { x: 400 }, <span class="k">0.5</span>)\n  .to("<span class="k">.C</span>", { x: 400 }, <span class="k">1</span>);`,
+      note: '传<b>数字</b>就是绝对时间：不管前面有什么，就在时间轴第 N 秒开始。'
+    },
+    label: {
+      pos: ['sync', 'sync', 'sync+=0.3'],
+      label: true,
+      code: `tl.addLabel(<span class="k">"sync"</span>, 0.2)\n  .to("<span class="k">.A</span>", { x: 400 }, <span class="k">"sync"</span>)\n  .to("<span class="k">.B</span>", { x: 400 }, <span class="k">"sync"</span>)\n  .to("<span class="k">.C</span>", { x: 400 }, <span class="k">"sync+=0.3"</span>);`,
+      note: '<b>标签</b>给时间点起名字。以后调整只改标签位置，所有挂在它上面的动画一起挪——比手算秒数好维护得多。'
+    }
+  };
+
+  let currentMode = 'default';
+
+  function build(mode) {
+    const cfg = MODES[mode];
+    gsap.set(Object.values(runners), { x: 0 });
+    if (tl) tl.kill();
+
+    tl = gsap.timeline({
+      onUpdate: updatePlayhead,
+      onComplete: () => gsap.set('#playhead', { left: '100%' })
+    });
+    if (cfg.label) tl.addLabel('sync', 0.2);
+
+    const dist = document.querySelector('.rail').clientWidth - 34;
+    ['A', 'B', 'C'].forEach((k, i) => {
+      const vars = { x: dist, duration: 0.8, ease: 'power2.inOut' };
+      // 位置参数为 undefined 时不传，走默认的「接在后面」
+      if (cfg.pos[i] === undefined) tl.to(runners[k], vars);
+      else tl.to(runners[k], vars, cfg.pos[i]);
+    });
+
+    // 用时间轴上每条子动画的 startTime / duration 画甘特条
+    const total = tl.duration();
+    ['A', 'B', 'C'].forEach((k, i) => {
+      const child = tl.getChildren(false, true, false)[i];
+      const bar = document.getElementById('g' + k);
+      bar.style.left = (child.startTime() / total * 100) + '%';
+      bar.style.width = (child.duration() / total * 100) + '%';
+    });
+
+    document.getElementById('code').innerHTML = cfg.code;
+    document.getElementById('explain').innerHTML = cfg.note;
+  }
+
+  function updatePlayhead() {
+    document.getElementById('playhead').style.left = (tl.progress() * 100) + '%';
+  }
+
+  document.getElementById('modes').addEventListener('click', e => {
+    const btn = e.target.closest('.opt');
+    if (!btn) return;
+    document.querySelectorAll('#modes .opt').forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
+    currentMode = btn.dataset.mode;
+    build(currentMode);
+  });
+
+  document.getElementById('replay').addEventListener('click', () => build(currentMode));
+  document.getElementById('slow').addEventListener('click', () => {
+    build(currentMode);
+    tl.timeScale(0.3);
+  });
+
+  build('default');
+</script>
+</body>
+</html>

@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ease 缓动全览 · 曲线可视化</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+    padding: 40px 24px 80px; line-height: 1.5;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  h1 { font-size: 24px; font-weight: 700; text-align: center; }
+  .sub { text-align: center; opacity: .55; font-size: 14px; margin-top: 8px; }
+  .toolbar {
+    display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;
+    margin: 22px 0 34px;
+  }
+  button {
+    background: #161b22; color: #58e6a8; border: 1px solid #30363d;
+    border-radius: 8px; padding: 9px 18px; font-size: 14px;
+    font-family: inherit; cursor: pointer; transition: border-color .2s, background .2s;
+  }
+  button:hover { border-color: #58e6a8; background: #1c2530; }
+  button.on { background: #58e6a8; color: #0d1117; border-color: #58e6a8; }
+  h2 {
+    font-size: 15px; margin: 30px 0 12px; padding-left: 10px;
+    border-left: 3px solid #58e6a8; opacity: .85;
+  }
+  .grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px;
+  }
+  .cell {
+    background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+    padding: 12px; cursor: pointer; transition: border-color .18s;
+  }
+  .cell:hover { border-color: #58e6a8; }
+  .name {
+    font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #58e6a8; margin-bottom: 8px;
+  }
+  /* 曲线画布：横轴 = 时间，纵轴 = 完成进度 */
+  svg { width: 100%; height: 92px; display: block; }
+  .frame { stroke: #30363d; stroke-width: 1; fill: none; }
+  .curve { stroke: #3b82f6; stroke-width: 2.5; fill: none; stroke-linecap: round; }
+  .dot { fill: #58e6a8; }
+  /* 小球轨道：直观感受同一段位移在不同 ease 下的手感差异 */
+  .track {
+    position: relative; height: 20px; margin-top: 8px;
+    border-radius: 10px; background: #0d1117; border: 1px solid #21262d;
+  }
+  .ball {
+    position: absolute; top: 3px; left: 3px; width: 12px; height: 12px;
+    border-radius: 50%; background: linear-gradient(135deg, #58e6a8, #3b82f6);
+  }
+  .tip {
+    max-width: 720px; margin: 34px auto 0; font-size: 13px; opacity: .5;
+    text-align: center; line-height: 1.8;
+  }
+  code { color: #58e6a8; font-family: ui-monospace, Menlo, monospace; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Ease 缓动全览</h1>
+  <p class="sub">同样是「移动一段距离」，速度曲线决定了它是廉价还是精致。点任意格子单独播放。</p>
+
+  <div class="toolbar">
+    <button id="playAll">▶ 全部播放</button>
+    <button class="filt on" data-f="all">全部</button>
+    <button class="filt" data-f="out">仅 .out</button>
+    <button class="filt" data-f="in">仅 .in</button>
+    <button class="filt" data-f="inOut">仅 .inOut</button>
+  </div>
+
+  <div id="groups"></div>
+
+  <p class="tip">
+    没指定 ease 时 GSAP 默认用 <code>power1.out</code>。<br>
+    实战里 <code>.out</code> 用得最多（元素冲出来再减速停住，最像现实物体）；<br>
+    <code>.in</code> 适合退场，<code>.inOut</code> 适合来回移动的过渡。
+  </p>
+</div>
+
+<script src="../lib/gsap.min.js"></script>
+<script src="../lib/EasePack.min.js"></script>
+<script>
+  // 按官方 ease 表分组：每组三种变体（in / out / inOut）
+  const GROUPS = [
+    { title: '线性与正弦', items: ['none', 'sine.in', 'sine.out', 'sine.inOut'] },
+    { title: 'power1 ~ power4（幂曲线，数字越大越陡）', items: [
+      'power1.in','power1.out','power1.inOut',
+      'power2.in','power2.out','power2.inOut',
+      'power3.in','power3.out','power3.inOut',
+      'power4.in','power4.out','power4.inOut'
+    ]},
+    { title: 'expo / circ（更极端的加减速）', items: [
+      'expo.in','expo.out','expo.inOut','circ.in','circ.out','circ.inOut'
+    ]},
+    { title: 'back（冲过头再回弹）', items: ['back.in(1.7)','back.out(1.7)','back.inOut(1.7)'] },
+    { title: 'elastic（弹簧抖动）', items: ['elastic.in(1,0.3)','elastic.out(1,0.3)','elastic.inOut(1,0.3)'] },
+    { title: 'bounce（落地弹跳）', items: ['bounce.in','bounce.out','bounce.inOut'] },
+    { title: 'steps（分段跳变，无过渡）', items: ['steps(4)','steps(8)','steps(12)'] }
+  ];
+
+  const groupsEl = document.getElementById('groups');
+  const cells = [];
+
+  // 把 ease 名字采样成一条 SVG 折线：x 为线性时间，y 为缓动后的进度
+  function samplePath(easeName) {
+    const fn = gsap.parseEase(easeName);
+    const pts = [];
+    for (let i = 0; i <= 120; i++) {
+      const t = i / 120;
+      // y 轴向下，所以用 100 - progress*100 翻转过来
+      pts.push(`${(t * 100).toFixed(2)},${(100 - fn(t) * 100).toFixed(2)}`);
+    }
+    return 'M' + pts.join(' L');
+  }
+
+  GROUPS.forEach(g => {
+    const h = document.createElement('h2');
+    h.textContent = g.title;
+    groupsEl.appendChild(h);
+
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    groupsEl.appendChild(grid);
+
+    g.items.forEach(name => {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      // 记下变体类型，供上方筛选按钮使用
+      cell.dataset.variant = name.includes('.inOut') ? 'inOut'
+        : name.includes('.out') ? 'out'
+        : name.includes('.in') ? 'in' : 'other';
+      cell.innerHTML = `
+        <div class="name">${name}</div>
+        <svg viewBox="-6 -40 112 180" preserveAspectRatio="none">
+          <rect class="frame" x="0" y="0" width="100" height="100"></rect>
+          <path class="curve" d="${samplePath(name)}"></path>
+          <circle class="dot" cx="0" cy="100" r="4"></circle>
+        </svg>
+        <div class="track"><div class="ball"></div></div>
+      `;
+      grid.appendChild(cell);
+
+      const item = {
+        el: cell,
+        name,
+        fn: gsap.parseEase(name),
+        dot: cell.querySelector('.dot'),
+        ball: cell.querySelector('.ball'),
+        track: cell.querySelector('.track')
+      };
+      cells.push(item);
+      cell.addEventListener('click', () => play(item));
+    });
+  });
+
+  // 播放单个 ease：曲线上的点 + 轨道小球同步走
+  function play(item) {
+    // 轨道宽度减去小球直径和左右内边距
+    const dist = item.track.clientWidth - 12 - 6;
+    // 时间轴本身走匀速，缓动值由 parseEase 手算，保证曲线点和小球完全对得上
+    gsap.killTweensOf(item);
+    const proxy = { t: 0 };
+    gsap.to(proxy, {
+      t: 1, duration: 1.4, ease: 'none',
+      onUpdate() {
+        const e = item.fn(proxy.t);
+        item.dot.setAttribute('cx', proxy.t * 100);
+        item.dot.setAttribute('cy', 100 - e * 100);
+        gsap.set(item.ball, { x: e * dist });
+      }
+    });
+  }
+
+  document.getElementById('playAll').addEventListener('click', () => {
+    cells.forEach(c => { if (c.el.style.display !== 'none') play(c); });
+  });
+
+  // 变体筛选
+  document.querySelectorAll('.filt').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filt').forEach(b => b.classList.remove('on'));
+      btn.classList.add('on');
+      const f = btn.dataset.f;
+      cells.forEach(c => {
+        const show = f === 'all' || c.el.dataset.variant === f || c.el.dataset.variant === 'other';
+        c.el.style.display = show ? '' : 'none';
+      });
+    });
+  });
+
+  // 首屏自动跑一遍
+  cells.forEach((c, i) => gsap.delayedCall(i * 0.02, () => play(c)));
+</script>
+</body>
+</html>

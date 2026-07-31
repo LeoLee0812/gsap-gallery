@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>overwrite · 动画打架了怎么办</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh; padding: 34px 24px 60px;
+    display: flex; flex-direction: column; align-items: center; gap: 20px;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .sub { font-size: 13.5px; opacity: .55; text-align: center; max-width: 760px; line-height: 1.8; margin-top: -12px; }
+  .grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 14px; width: min(1080px, 100%);
+  }
+  .cell {
+    background: #161b22; border: 1px solid #30363d; border-radius: 14px; padding: 16px 18px;
+  }
+  .cname {
+    font-size: 13px; color: #58e6a8; font-weight: 700;
+    font-family: ui-monospace, Menlo, monospace; margin-bottom: 5px;
+  }
+  .cdesc { font-size: 12px; opacity: .5; line-height: 1.65; margin-bottom: 12px; min-height: 58px; }
+  .field {
+    height: 88px; position: relative; overflow: hidden;
+    background: #0d1117; border: 1px solid #21262d; border-radius: 10px;
+  }
+  .runner {
+    position: absolute; left: 8px; top: 24px; width: 40px; height: 40px;
+    border-radius: 11px; background: linear-gradient(135deg, #58e6a8, #3b82f6);
+  }
+  .result {
+    margin-top: 10px; font-size: 11.5px; font-family: ui-monospace, Menlo, monospace;
+    color: #6e7681; line-height: 1.8; min-height: 34px;
+  }
+  .result b { color: #f0883e; }
+  .go {
+    width: min(1080px, 100%); display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;
+  }
+  .go button {
+    background: #58e6a8; color: #0d1117; border: 0; border-radius: 22px;
+    padding: 11px 26px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit;
+  }
+  .go button.alt { background: #161b22; color: #58e6a8; border: 1px solid #30363d; }
+  /* 真实场景：hover 频繁进出 */
+  .real {
+    width: min(1080px, 100%); background: #161b22;
+    border: 1px solid #30363d; border-radius: 16px; padding: 20px 24px;
+  }
+  .rtitle { font-size: 15px; font-weight: 700; color: #58e6a8; margin-bottom: 4px; }
+  .rdesc { font-size: 12.5px; opacity: .55; line-height: 1.7; margin-bottom: 16px; }
+  .cards { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+  .hcard {
+    width: 150px; height: 110px; border-radius: 14px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; text-align: center;
+    font-size: 12.5px; padding: 12px; line-height: 1.5;
+    background: #0d1117; border: 1px solid #30363d;
+  }
+  pre {
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    padding: 16px 20px; font-size: 12.5px; line-height: 1.75;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #8b949e; width: min(1080px, 100%); overflow-x: auto;
+  }
+  pre .k { color: #58e6a8; }
+  pre .c { color: #6e7681; }
+  .note {
+    width: min(1080px, 100%); font-size: 13px; color: #8b949e; line-height: 1.9;
+    border-top: 1px solid #21262d; padding-top: 16px;
+  }
+  .note b { color: #58e6a8; }
+</style>
+</head>
+<body>
+  <h1>overwrite · 两条动画抢同一个元素</h1>
+  <p class="sub">
+    「为什么我的元素动到一半突然跳了一下」「为什么快速划过卡片后它卡在中间状态」——
+    答案基本都是<b>两条 tween 在同时改同一个属性</b>。overwrite 决定新来的那条怎么处理旧的。<br>
+    下面三个格子里，会先启动一条「向右 + 变红」的长动画，<b>0.6 秒后</b>再插入一条「只改 y」的动画。
+  </p>
+
+  <div class="grid">
+    <div class="cell" data-ow="false">
+      <div class="cname">overwrite: false　（默认）</div>
+      <div class="cdesc">
+        谁也不杀谁，两条同时跑。改的是不同属性时没问题；
+        <b>改同一个属性就会互相打架，画面抖动</b>。
+      </div>
+      <div class="field"><div class="runner"></div></div>
+      <div class="result"></div>
+    </div>
+
+    <div class="cell" data-ow="auto">
+      <div class="cname">overwrite: "auto"　（推荐）</div>
+      <div class="cdesc">
+        只杀掉<b>冲突的那几个属性</b>，不相干的属性照常跑。
+        这里 x 和 backgroundColor 会继续，只有重叠的属性被接管。
+      </div>
+      <div class="field"><div class="runner"></div></div>
+      <div class="result"></div>
+    </div>
+
+    <div class="cell" data-ow="true">
+      <div class="cname">overwrite: true</div>
+      <div class="cdesc">
+        <b>把这个元素上所有正在跑的动画全杀掉</b>，不管冲不冲突。
+        最粗暴，也最可预测——所以 hover 这类频繁打断的场景反而适合它。
+      </div>
+      <div class="field"><div class="runner"></div></div>
+      <div class="result"></div>
+    </div>
+  </div>
+
+  <div class="go">
+    <button id="run">▶ 三个格子同时演示</button>
+    <button class="alt" id="reset">↺ 复位</button>
+  </div>
+
+  <div class="real">
+    <div class="rtitle">真实场景：快速划过卡片</div>
+    <div class="rdesc">
+      鼠标飞快地在三张卡片上来回扫。<b>不做 overwrite 处理的那张会卡在中间状态</b>——
+      因为进场动画还没跑完，离场动画就叠上来了，两条都在改 scale。
+    </div>
+    <div class="cards">
+      <div class="hcard" data-mode="none">不处理<br><span style="opacity:.5">来回快速划过我</span></div>
+      <div class="hcard" data-mode="auto">overwrite: "auto"<br><span style="opacity:.5">来回快速划过我</span></div>
+      <div class="hcard" data-mode="kill">先 killTweensOf<br><span style="opacity:.5">来回快速划过我</span></div>
+    </div>
+  </div>
+
+  <pre><span class="c">// 场景：hover 进出非常频繁，进场动画还没播完就要播离场</span>
+
+<span class="c">// ❌ 不处理：两条 tween 同时改 scale，元素会卡在诡异的中间值</span>
+card.addEventListener(<span class="k">"mouseenter"</span>, () =&gt; gsap.to(card, { scale: 1.1, duration: 0.4 }));
+card.addEventListener(<span class="k">"mouseleave"</span>, () =&gt; gsap.to(card, { scale: 1,   duration: 0.4 }));
+
+<span class="c">// ✅ 方案一：overwrite "auto"，新 tween 自动接管冲突属性</span>
+gsap.to(card, { scale: 1.1, duration: 0.4, <span class="k">overwrite</span>: <span class="k">"auto"</span> });
+
+<span class="c">// ✅ 方案二：手动杀掉这个元素上所有动画再开新的</span>
+gsap.killTweensOf(card);
+gsap.to(card, { scale: 1.1, duration: 0.4 });
+
+<span class="c">// ✅ 方案三（最优雅）：hover 类交互直接用 quickTo，天然不会堆积</span>
+<span class="k">const</span> scaleTo = gsap.quickTo(card, <span class="k">"scale"</span>, { duration: 0.4, ease: <span class="k">"power2.out"</span> });
+card.onmouseenter = () =&gt; scaleTo(1.1);
+card.onmouseleave = () =&gt; scaleTo(1);</pre>
+
+  <p class="note">
+    <b>为什么默认是 false 而不是 auto：</b>因为 GSAP 不想替你做决定。
+    很多正常场景就是需要多条 tween 同时作用于一个元素的不同属性（一条管位置、一条管颜色、一条管旋转），
+    默认全杀会把这些正常用法搞坏。<br>
+    <b>什么时候一定要设 overwrite：</b>凡是<b>同一个属性可能被反复重新触发</b>的地方——
+    hover 进出、拖拽跟随、滚动方向切换、按钮连点。<br>
+    <b>还有个 immediateRender 的坑：</b>两条 <code>from()</code> 作用于同一元素同一属性时，
+    后一条会在创建瞬间就把元素设成它的起始值，导致第一条的效果看不见。
+    这时给后一条加 <code>immediateRender: false</code>。
+  </p>
+
+<script src="../lib/gsap.min.js"></script>
+<script>
+  const cells = gsap.utils.toArray('.cell');
+
+  function reset() {
+    cells.forEach(c => {
+      const r = c.querySelector('.runner');
+      gsap.killTweensOf(r);
+      gsap.set(r, { x: 0, y: 0, backgroundColor: '', clearProps: 'backgroundColor' });
+      c.querySelector('.result').innerHTML = '';
+    });
+  }
+
+  function run() {
+    reset();
+
+    cells.forEach(cell => {
+      const r = cell.querySelector('.runner');
+      const res = cell.querySelector('.result');
+      const ow = cell.dataset.ow === 'true' ? true : cell.dataset.ow === 'auto' ? 'auto' : false;
+      const dist = cell.querySelector('.field').clientWidth - 40 - 16;
+
+      // 第一条：长动画，同时改 x、y、背景色
+      gsap.to(r, {
+        x: dist, y: 0, backgroundColor: '#f85149',
+        duration: 2.6, ease: 'none'
+      });
+      res.innerHTML = '第 1 条：x + y + 背景色（2.6s）已启动…';
+
+      // 0.6 秒后插入第二条，只改 y —— 与第一条的 y 冲突
+      gsap.delayedCall(0.6, () => {
+        gsap.to(r, {
+          y: 26,
+          duration: 1.2, ease: 'power2.inOut',
+          overwrite: ow
+        });
+
+        // 数一下这个元素上还剩几条活跃 tween
+        gsap.delayedCall(0.05, () => {
+          const live = gsap.getTweensOf(r).filter(t => t.isActive()).length;
+          const desc = ow === false
+            ? `两条都还活着 → <b>${live} 条</b>　x 继续跑，y 被两条同时争夺`
+            : ow === 'auto'
+            ? `只杀冲突属性 → <b>${live} 条</b>　x 和背景色继续，y 被新 tween 接管`
+            : `全部杀光 → <b>${live} 条</b>　x 停在原地不再前进，只剩 y 在动`;
+          res.innerHTML = `第 2 条：只改 y（1.2s）已插入<br>${desc}`;
+        });
+      });
+    });
+  }
+
+  document.getElementById('run').onclick = run;
+  document.getElementById('reset').onclick = reset;
+  run();
+
+  // ---- 真实场景：快速划过卡片 ----
+  document.querySelectorAll('.hcard').forEach(card => {
+    const mode = card.dataset.mode;
+
+    const enter = () => {
+      // 不处理：两条 tween 会叠在一起争夺 scale
+      if (mode === 'none') {
+        gsap.to(card, { scale: 1.12, borderColor: '#58e6a8', duration: 0.45, ease: 'power2.out' });
+      } else if (mode === 'auto') {
+        gsap.to(card, { scale: 1.12, borderColor: '#58e6a8', duration: 0.45, ease: 'power2.out', overwrite: 'auto' });
+      } else {
+        gsap.killTweensOf(card);
+        gsap.to(card, { scale: 1.12, borderColor: '#58e6a8', duration: 0.45, ease: 'power2.out' });
+      }
+    };
+
+    const leave = () => {
+      if (mode === 'none') {
+        gsap.to(card, { scale: 1, borderColor: '#30363d', duration: 0.45, ease: 'power2.out' });
+      } else if (mode === 'auto') {
+        gsap.to(card, { scale: 1, borderColor: '#30363d', duration: 0.45, ease: 'power2.out', overwrite: 'auto' });
+      } else {
+        gsap.killTweensOf(card);
+        gsap.to(card, { scale: 1, borderColor: '#30363d', duration: 0.45, ease: 'power2.out' });
+      }
+    };
+
+    card.addEventListener('mouseenter', enter);
+    card.addEventListener('mouseleave', leave);
+  });
+</script>
+</body>
+</html>

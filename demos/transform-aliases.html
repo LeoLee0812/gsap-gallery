@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transform 变换属性速查台</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh; padding: 40px 24px;
+    display: flex; flex-direction: column; align-items: center; gap: 22px;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .sub { font-size: 14px; opacity: .55; margin-top: -14px; text-align: center; max-width: 680px; line-height: 1.7; }
+  .main { display: flex; gap: 22px; flex-wrap: wrap; justify-content: center; width: min(1040px, 100%); }
+  .stage {
+    flex: 1 1 340px; min-height: 320px; position: relative;
+    background: #161b22; border: 1px solid #30363d; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    perspective: 800px; overflow: hidden;
+  }
+  /* 参考网格，方便看清位移量 */
+  .stage::before {
+    content: ''; position: absolute; inset: 0;
+    background-image: linear-gradient(#21262d 1px, transparent 1px), linear-gradient(90deg, #21262d 1px, transparent 1px);
+    background-size: 40px 40px; opacity: .55;
+  }
+  #box {
+    width: 110px; height: 110px; border-radius: 16px;
+    background: linear-gradient(135deg, #58e6a8, #3b82f6);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; color: #0d1117; position: relative;
+  }
+  /* 变换原点的可视化小圆点 */
+  #origin {
+    position: absolute; width: 10px; height: 10px; border-radius: 50%;
+    background: #f85149; box-shadow: 0 0 0 3px rgba(248,81,73,.25);
+    pointer-events: none;
+  }
+  .panel {
+    flex: 1 1 340px; background: #161b22; border: 1px solid #30363d;
+    border-radius: 14px; padding: 18px 20px;
+    display: flex; flex-direction: column; gap: 13px;
+  }
+  .ctrl { display: flex; align-items: center; gap: 10px; }
+  .ctrl label {
+    width: 116px; font-size: 12px; font-family: ui-monospace, Menlo, monospace;
+    color: #58e6a8; flex-shrink: 0;
+  }
+  .ctrl input[type=range] { flex: 1; accent-color: #58e6a8; }
+  .ctrl .v {
+    width: 52px; text-align: right; font-size: 12px; opacity: .6;
+    font-family: ui-monospace, Menlo, monospace;
+  }
+  .sect { font-size: 11px; opacity: .4; margin-top: 6px; letter-spacing: .5px; }
+  .originRow { display: flex; gap: 6px; flex-wrap: wrap; }
+  .originRow button {
+    background: #0d1117; color: #8b949e; border: 1px solid #30363d;
+    border-radius: 6px; padding: 5px 9px; font-size: 11px; cursor: pointer;
+    font-family: ui-monospace, Menlo, monospace;
+  }
+  .originRow button.on { background: #58e6a8; color: #0d1117; border-color: #58e6a8; }
+  .dirRow { display: flex; gap: 6px; flex-wrap: wrap; }
+  .dirRow button {
+    background: #0d1117; color: #f0883e; border: 1px solid #30363d;
+    border-radius: 6px; padding: 6px 11px; font-size: 12px; cursor: pointer;
+    font-family: ui-monospace, Menlo, monospace;
+  }
+  .dirRow button:hover { border-color: #f0883e; }
+  pre {
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    padding: 14px 18px; font-size: 13px; line-height: 1.7;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #8b949e; width: min(1040px, 100%); overflow-x: auto;
+  }
+  pre .k { color: #58e6a8; }
+  .warn {
+    width: min(1040px, 100%); font-size: 13px; color: #8b949e; line-height: 1.9;
+    border-top: 1px solid #21262d; padding-top: 16px;
+  }
+  .warn b { color: #58e6a8; }
+  .warn .bad { color: #f85149; }
+  .reset {
+    background: #161b22; color: #58e6a8; border: 1px solid #30363d;
+    border-radius: 8px; padding: 8px 18px; font-size: 13px; cursor: pointer; font-family: inherit;
+  }
+</style>
+</head>
+<body>
+  <h1>Transform 变换属性速查台</h1>
+  <p class="sub">
+    GSAP 给 transform 起了一套简写别名。拖滑块看效果，右下角实时生成可复制的代码。
+    <b>永远用这些别名，不要自己拼 transform 字符串</b>——它们应用顺序固定、跨浏览器一致、性能更好。
+  </p>
+
+  <div class="main">
+    <div class="stage">
+      <div id="box">BOX</div>
+      <div id="origin"></div>
+    </div>
+
+    <div class="panel">
+      <div class="sect">位移</div>
+      <div class="ctrl"><label>x</label><input type="range" data-p="x" min="-140" max="140" value="0"><span class="v">0</span></div>
+      <div class="ctrl"><label>y</label><input type="range" data-p="y" min="-110" max="110" value="0"><span class="v">0</span></div>
+      <div class="ctrl"><label>xPercent</label><input type="range" data-p="xPercent" min="-100" max="100" value="0"><span class="v">0</span></div>
+
+      <div class="sect">缩放</div>
+      <div class="ctrl"><label>scaleX</label><input type="range" data-p="scaleX" min="0.2" max="2" step="0.05" value="1"><span class="v">1</span></div>
+      <div class="ctrl"><label>scaleY</label><input type="range" data-p="scaleY" min="0.2" max="2" step="0.05" value="1"><span class="v">1</span></div>
+
+      <div class="sect">旋转（rotation = 2D，rotationX/Y = 3D）</div>
+      <div class="ctrl"><label>rotation</label><input type="range" data-p="rotation" min="-180" max="180" value="0"><span class="v">0</span></div>
+      <div class="ctrl"><label>rotationX</label><input type="range" data-p="rotationX" min="-80" max="80" value="0"><span class="v">0</span></div>
+      <div class="ctrl"><label>rotationY</label><input type="range" data-p="rotationY" min="-80" max="80" value="0"><span class="v">0</span></div>
+
+      <div class="sect">斜切</div>
+      <div class="ctrl"><label>skewX</label><input type="range" data-p="skewX" min="-45" max="45" value="0"><span class="v">0</span></div>
+      <div class="ctrl"><label>skewY</label><input type="range" data-p="skewY" min="-45" max="45" value="0"><span class="v">0</span></div>
+
+      <div class="sect">transformOrigin（红点即变换原点，改它再转旋转试试）</div>
+      <div class="originRow" id="originRow">
+        <button class="on" data-o="50% 50%">50% 50%</button>
+        <button data-o="left top">left top</button>
+        <button data-o="right top">right top</button>
+        <button data-o="left bottom">left bottom</button>
+        <button data-o="0% 50%">0% 50%</button>
+      </div>
+
+      <div class="sect">方向性旋转（转到同一角度，走不同的路）</div>
+      <div class="dirRow">
+        <button data-d="_short">"-170_short"</button>
+        <button data-d="_cw">"-170_cw"</button>
+        <button data-d="_ccw">"170_ccw"</button>
+        <button data-d="rel">"+=90"（相对值）</button>
+      </div>
+
+      <button class="reset" id="reset">clearProps: "all" 全部复位</button>
+    </div>
+  </div>
+
+  <pre id="code"></pre>
+
+  <p class="warn">
+    <b>三个必须知道的点：</b><br>
+    ① GSAP 的 <b>x / y</b> 底层是 translate，不是 left / top——所以它走 GPU 合成层，不触发重排。<br>
+    ② <b>xPercent / yPercent</b> 按元素自身尺寸的百分比位移，做居中（<code>xPercent: -50</code>）和 SVG 位移比 x 更可靠。<br>
+    ③ <b>clearProps</b> 清掉任意一个 transform 相关属性（哪怕只写 <code>x</code>），会把<span class="bad">整个 transform</span> 一起清掉——这是设计如此，不是 bug。
+  </p>
+
+<script src="../lib/gsap.min.js"></script>
+<script>
+  const box = document.getElementById('box');
+  const originDot = document.getElementById('origin');
+
+  // 当前所有变换值，滑块改哪个就更新哪个
+  const state = {
+    x: 0, y: 0, xPercent: 0,
+    scaleX: 1, scaleY: 1,
+    rotation: 0, rotationX: 0, rotationY: 0,
+    skewX: 0, skewY: 0,
+    transformOrigin: '50% 50%'
+  };
+
+  // 只把非默认值写进代码回显，避免噪音
+  const DEFAULTS = { x:0, y:0, xPercent:0, scaleX:1, scaleY:1, rotation:0, rotationX:0, rotationY:0, skewX:0, skewY:0 };
+
+  function apply(animated) {
+    const vars = { ...state };
+    if (animated) { vars.duration = 0.5; vars.ease = 'power2.out'; gsap.to(box, vars); }
+    else gsap.set(box, vars);
+    renderCode();
+    positionOrigin();
+  }
+
+  // 把 transformOrigin 换算成舞台内的坐标，画出那颗红点
+  function positionOrigin() {
+    const r = box.getBoundingClientRect();
+    const sr = box.parentElement.getBoundingClientRect();
+    const o = state.transformOrigin.split(/\s+/);
+    const toRatio = (v, keyword) => {
+      if (v === 'left' || v === 'top') return 0;
+      if (v === 'right' || v === 'bottom') return 1;
+      if (v === 'center') return .5;
+      return parseFloat(v) / 100;
+    };
+    const rx = toRatio(o[0]), ry = toRatio(o[1] ?? o[0]);
+    originDot.style.left = (r.left - sr.left + r.width * rx - 5) + 'px';
+    originDot.style.top  = (r.top - sr.top + r.height * ry - 5) + 'px';
+  }
+
+  function renderCode() {
+    const parts = [];
+    Object.keys(DEFAULTS).forEach(k => {
+      if (Math.abs(state[k] - DEFAULTS[k]) > 0.001) {
+        parts.push(`${k}: ${state[k]}`);
+      }
+    });
+    if (state.transformOrigin !== '50% 50%') parts.push(`transformOrigin: "${state.transformOrigin}"`);
+    const body = parts.length ? '\n  ' + parts.join(',\n  ') + ',\n  duration: 0.5' : '\n  duration: 0.5';
+    document.getElementById('code').innerHTML =
+      `<span class="k">gsap</span>.to(<span class="k">"#box"</span>, {${body}\n});`;
+  }
+
+  document.querySelectorAll('.ctrl input').forEach(inp => {
+    inp.addEventListener('input', () => {
+      state[inp.dataset.p] = parseFloat(inp.value);
+      inp.nextElementSibling.textContent = inp.value;
+      apply(false);
+    });
+  });
+
+  document.getElementById('originRow').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    document.querySelectorAll('#originRow button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    state.transformOrigin = b.dataset.o;
+    apply(false);
+  });
+
+  // 方向性旋转：同一个目标角度，_short / _cw / _ccw 走的路径完全不同
+  document.querySelectorAll('.dirRow button').forEach(b => {
+    b.addEventListener('click', () => {
+      const d = b.dataset.d;
+      const value = d === 'rel' ? '+=90' : (d === '_ccw' ? '170_ccw' : '-170' + d);
+      gsap.to(box, { rotation: value, duration: 1.1, ease: 'power2.inOut',
+        onUpdate() { positionOrigin(); },
+        onComplete() {
+          // 同步回 state，让滑块和代码保持一致
+          state.rotation = Math.round(gsap.getProperty(box, 'rotation'));
+          document.querySelector('[data-p=rotation]').value = ((state.rotation % 360) + 540) % 360 - 180;
+          renderCode();
+        }
+      });
+      document.getElementById('code').innerHTML =
+        `<span class="k">gsap</span>.to(<span class="k">"#box"</span>, { rotation: <span class="k">"${value}"</span>, duration: 1.1 });`;
+    });
+  });
+
+  // clearProps 把 GSAP 写入的内联样式整个摘掉，交还给 CSS
+  document.getElementById('reset').addEventListener('click', () => {
+    Object.assign(state, { x:0, y:0, xPercent:0, scaleX:1, scaleY:1, rotation:0, rotationX:0, rotationY:0, skewX:0, skewY:0, transformOrigin:'50% 50%' });
+    document.querySelectorAll('.ctrl input').forEach(i => {
+      i.value = i.dataset.p.startsWith('scale') ? 1 : 0;
+      i.nextElementSibling.textContent = i.value;
+    });
+    document.querySelectorAll('#originRow button').forEach((x, i) => x.classList.toggle('on', i === 0));
+    gsap.to(box, { clearProps: 'all', duration: 0.4, x: 0, y: 0, scale: 1, rotation: 0, skewX: 0, skewY: 0,
+      onComplete: () => { gsap.set(box, { clearProps: 'all' }); positionOrigin(); } });
+    renderCode();
+  });
+
+  apply(false);
+  window.addEventListener('resize', positionOrigin);
+</script>
+</body>
+</html>

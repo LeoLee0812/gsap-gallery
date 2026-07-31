@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>matchMedia · 响应式动画与无障碍降级</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh; padding: 40px 24px 80px;
+    display: flex; flex-direction: column; align-items: center; gap: 22px;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .sub { font-size: 14px; opacity: .55; margin-top: -14px; text-align: center; max-width: 700px; line-height: 1.7; }
+  /* 当前命中的断点状态条 */
+  .status {
+    width: min(880px, 100%); display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;
+  }
+  .chip {
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    padding: 10px 16px; font-size: 13px; font-family: ui-monospace, Menlo, monospace;
+    color: #6e7681; transition: all .25s;
+  }
+  .chip.hit {
+    background: rgba(88,230,168,.12); border-color: #58e6a8; color: #58e6a8; font-weight: 600;
+  }
+  .meter {
+    width: min(880px, 100%); font-size: 13px; opacity: .6; text-align: center;
+    font-family: ui-monospace, Menlo, monospace;
+  }
+  .stage {
+    width: min(880px, 100%); min-height: 240px; position: relative;
+    background: #161b22; border: 1px solid #30363d; border-radius: 14px;
+    padding: 26px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+    overflow: hidden;
+  }
+  .cards { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+  .card {
+    width: 108px; height: 92px; border-radius: 14px;
+    background: linear-gradient(135deg, #58e6a8, #3b82f6);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; color: #0d1117; font-weight: 800;
+  }
+  .hint { font-size: 13px; opacity: .55; text-align: center; }
+  .toggle {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center;
+  }
+  button {
+    background: #161b22; color: #58e6a8; border: 1px solid #30363d;
+    border-radius: 8px; padding: 9px 18px; font-size: 14px;
+    font-family: inherit; cursor: pointer;
+  }
+  button:hover { border-color: #58e6a8; }
+  button.on { background: #58e6a8; color: #0d1117; }
+  pre {
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    padding: 16px 20px; font-size: 13px; line-height: 1.75;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #8b949e; width: min(880px, 100%); overflow-x: auto;
+  }
+  pre .k { color: #58e6a8; }
+  pre .c { color: #6e7681; }
+  .note {
+    width: min(880px, 100%); font-size: 13px; color: #8b949e; line-height: 1.9;
+    border-top: 1px solid #21262d; padding-top: 16px;
+  }
+  .note b { color: #58e6a8; }
+</style>
+</head>
+<body>
+  <h1>matchMedia · 响应式动画与无障碍降级</h1>
+  <p class="sub">
+    <b>拖动浏览器窗口宽度</b>看动画自己换一套。这是 GSAP 处理响应式的官方方式：
+    不同断点写不同动画，切换时旧的自动清理干净，不用手写 kill。
+  </p>
+
+  <div class="status">
+    <div class="chip" id="chipDesktop">(min-width: 900px) 桌面</div>
+    <div class="chip" id="chipTablet">(600px ~ 899px) 平板</div>
+    <div class="chip" id="chipMobile">(max-width: 599px) 手机</div>
+    <div class="chip" id="chipRM">prefers-reduced-motion 已开启</div>
+  </div>
+  <div class="meter" id="meter"></div>
+
+  <div class="stage">
+    <div class="cards">
+      <div class="card">1</div><div class="card">2</div><div class="card">3</div>
+      <div class="card">4</div><div class="card">5</div><div class="card">6</div>
+    </div>
+    <div class="hint" id="hint"></div>
+  </div>
+
+  <div class="toggle">
+    <span style="opacity:.55;font-size:13px">模拟系统「减少动态效果」：</span>
+    <button id="rmOff" class="on">关（正常动画）</button>
+    <button id="rmOn">开（降级为淡入）</button>
+  </div>
+
+  <pre><span class="c">// 一个 mm 实例管理所有断点，revert() 一次性清理全部</span>
+<span class="k">const</span> mm = gsap.matchMedia();
+
+mm.add({
+  isDesktop: <span class="k">"(min-width: 900px)"</span>,
+  isTablet:  <span class="k">"(min-width: 600px) and (max-width: 899px)"</span>,
+  isMobile:  <span class="k">"(max-width: 599px)"</span>,
+  <span class="c">// 系统层面的无障碍偏好，和屏幕宽度一样可以当条件用</span>
+  reduce:    <span class="k">"(prefers-reduced-motion: reduce)"</span>
+}, (ctx) =&gt; {
+  <span class="k">const</span> { isDesktop, isTablet, isMobile, reduce } = ctx.conditions;
+
+  <span class="c">// 开了减少动态效果：只做最朴素的淡入，不位移不旋转</span>
+  <span class="k">if</span> (reduce) {
+    gsap.fromTo(<span class="k">".card"</span>, { opacity: 0 }, { opacity: 1, duration: 0.4 });
+    <span class="k">return</span>;
+  }
+
+  gsap.timeline({ repeat: -1, yoyo: <span class="k">true</span> })
+    .from(<span class="k">".card"</span>, {
+      <span class="c">// 同一份代码，参数按断点取不同值</span>
+      y: isDesktop ? 90 : isTablet ? 50 : 24,
+      rotate: isDesktop ? 180 : isMobile ? 0 : 90,
+      scale: isMobile ? 0.85 : 0,
+      stagger: isDesktop ? 0.09 : 0.04,
+      duration: isMobile ? 0.35 : 0.7,
+      ease: <span class="k">"back.out(1.6)"</span>
+    });
+
+  <span class="c">// 返回的函数在断点切走时自动执行，用来做额外清理</span>
+  <span class="k">return</span> () =&gt; console.log(<span class="k">"离开这个断点，动画已自动回滚"</span>);
+});</pre>
+
+  <p class="note">
+    <b>为什么必须用 matchMedia 而不是自己监听 resize：</b>
+    断点切换时 GSAP 会把上一套动画写进元素的内联样式<b>全部 revert 掉</b>，
+    不会出现「手机上还残留着桌面动画留下的 transform」这类脏状态。<br>
+    <b>prefers-reduced-motion 不是可选项</b>——前庭功能障碍的用户看到大幅位移和旋转会真的头晕。
+    把它当成一个断点写进 matchMedia，是成本最低的无障碍处理。
+  </p>
+
+<script src="../lib/gsap.min.js"></script>
+<script>
+  const meter = document.getElementById('meter');
+  const hint = document.getElementById('hint');
+
+  // 用一个变量模拟系统的 reduced-motion 偏好，方便在桌面上直接演示
+  let forceReduce = false;
+  let mm = null;
+
+  function setup() {
+    // revert() 会把这个实例创建的所有动画和内联样式全部撤销
+    if (mm) mm.revert();
+    mm = gsap.matchMedia();
+
+    mm.add({
+      isDesktop: '(min-width: 900px)',
+      isTablet: '(min-width: 600px) and (max-width: 899px)',
+      isMobile: '(max-width: 599px)',
+      reduce: '(prefers-reduced-motion: reduce)'
+    }, (ctx) => {
+      const { isDesktop, isTablet, isMobile, reduce } = ctx.conditions;
+
+      // 状态条高亮当前命中的断点
+      document.getElementById('chipDesktop').classList.toggle('hit', !!isDesktop);
+      document.getElementById('chipTablet').classList.toggle('hit', !!isTablet);
+      document.getElementById('chipMobile').classList.toggle('hit', !!isMobile);
+      const reduced = reduce || forceReduce;
+      document.getElementById('chipRM').classList.toggle('hit', !!reduced);
+
+      if (reduced) {
+        hint.textContent = '降级模式：只保留 0.4s 淡入，没有位移、旋转、缩放';
+        gsap.fromTo('.card', { opacity: 0 }, { opacity: 1, duration: 0.4, stagger: 0.05 });
+        return;
+      }
+
+      hint.textContent = isDesktop
+        ? '桌面：大幅位移 + 180° 旋转 + 0.09s 错开，动画最完整'
+        : isTablet
+        ? '平板：中等位移 + 90° 旋转，错开收紧到 0.04s'
+        : '手机：小位移、不旋转、时长压到 0.35s，避免小屏上眼花';
+
+      gsap.timeline({ repeat: -1, yoyo: true, repeatDelay: 0.5 })
+        .from('.card', {
+          y: isDesktop ? 90 : isTablet ? 50 : 24,
+          rotate: isDesktop ? 180 : isMobile ? 0 : 90,
+          scale: isMobile ? 0.85 : 0,
+          opacity: 0,
+          stagger: isDesktop ? 0.09 : 0.04,
+          duration: isMobile ? 0.35 : 0.7,
+          ease: 'back.out(1.6)'
+        });
+    });
+  }
+
+  function updateMeter() {
+    meter.textContent = `当前窗口宽度：${window.innerWidth}px　（把窗口拖窄到 900 / 600 以下试试）`;
+  }
+  window.addEventListener('resize', updateMeter);
+  updateMeter();
+
+  document.getElementById('rmOn').onclick = () => {
+    forceReduce = true;
+    document.getElementById('rmOn').classList.add('on');
+    document.getElementById('rmOff').classList.remove('on');
+    setup();
+  };
+  document.getElementById('rmOff').onclick = () => {
+    forceReduce = false;
+    document.getElementById('rmOff').classList.add('on');
+    document.getElementById('rmOn').classList.remove('on');
+    setup();
+  };
+
+  setup();
+</script>
+</body>
+</html>

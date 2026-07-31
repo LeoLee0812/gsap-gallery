@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Timeline 播放控制台</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh; padding: 40px 24px;
+    display: flex; flex-direction: column; align-items: center; gap: 22px;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .sub { font-size: 14px; opacity: .55; margin-top: -14px; text-align: center; max-width: 640px; }
+  .stage {
+    width: min(720px, 100%); height: 260px; position: relative;
+    background: #161b22; border: 1px solid #30363d; border-radius: 14px; overflow: hidden;
+  }
+  .card {
+    position: absolute; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; font-weight: 700; color: #0d1117;
+  }
+  #c1 { width: 70px; height: 70px; left: 40px;  top: 95px; background: #58e6a8; }
+  #c2 { width: 70px; height: 70px; left: 140px; top: 95px; background: #3b82f6; }
+  #c3 { width: 70px; height: 70px; left: 240px; top: 95px; background: #f0883e; }
+  #title {
+    position: absolute; top: 26px; left: 0; right: 0; text-align: center;
+    font-size: 24px; font-weight: 800; color: #e6edf3; opacity: 0;
+  }
+  /* 进度条：可拖动 = 手动 seek 时间轴 */
+  .scrub {
+    width: min(720px, 100%); display: flex; align-items: center; gap: 12px;
+  }
+  .scrub input { flex: 1; accent-color: #58e6a8; }
+  .time {
+    font-family: ui-monospace, Menlo, monospace; font-size: 13px;
+    color: #58e6a8; min-width: 96px; text-align: right;
+  }
+  .btns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  button {
+    background: #161b22; color: #58e6a8; border: 1px solid #30363d;
+    border-radius: 8px; padding: 9px 16px; font-size: 14px;
+    font-family: inherit; cursor: pointer; transition: all .16s;
+  }
+  button:hover { border-color: #58e6a8; background: #1c2530; }
+  .speed { display: flex; gap: 6px; align-items: center; font-size: 13px; opacity: .7; }
+  .speed button { padding: 6px 12px; font-size: 13px; }
+  .speed button.on { background: #58e6a8; color: #0d1117; }
+  pre {
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    padding: 14px 18px; font-size: 13px; line-height: 1.75;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #8b949e; width: min(720px, 100%); overflow-x: auto;
+  }
+  pre .k { color: #58e6a8; }
+  pre .c { color: #6e7681; }
+  .labels { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; font-size: 13px; }
+  .labels button { padding: 6px 14px; font-size: 13px; color: #f0883e; }
+</style>
+</head>
+<body>
+  <h1>Timeline 播放控制台</h1>
+  <p class="sub">
+    时间轴不是「播完就完」——它是一个可以随时暂停、倒放、变速、跳到任意一秒的对象。
+    这是 GSAP 相对 CSS 动画最大的优势。
+  </p>
+
+  <div class="stage">
+    <div id="title">动画编排完成</div>
+    <div class="card" id="c1">A</div>
+    <div class="card" id="c2">B</div>
+    <div class="card" id="c3">C</div>
+  </div>
+
+  <div class="scrub">
+    <span class="time" id="tCur">0.00s</span>
+    <input type="range" id="seek" min="0" max="1000" value="0">
+    <span class="time" id="tAll">/ 0.00s</span>
+  </div>
+
+  <div class="btns">
+    <button id="play">▶ play()</button>
+    <button id="pause">⏸ pause()</button>
+    <button id="reverse">◀ reverse()</button>
+    <button id="restart">↻ restart()</button>
+    <button id="half">⇥ progress(0.5)</button>
+    <button id="complete">⏭ progress(1)</button>
+  </div>
+
+  <div class="speed">
+    <span>timeScale：</span>
+    <button data-s="0.25">0.25×</button>
+    <button data-s="0.5">0.5×</button>
+    <button data-s="1" class="on">1×</button>
+    <button data-s="2">2×</button>
+    <button data-s="4">4×</button>
+  </div>
+
+  <div class="labels">
+    <span style="opacity:.6;align-self:center">跳到标签：</span>
+    <button data-l="intro">intro</button>
+    <button data-l="spread">spread</button>
+    <button data-l="gather">gather</button>
+    <button data-l="outro">outro</button>
+  </div>
+
+  <pre><span class="c">// 时间轴创建时就带 defaults，子动画统统继承</span>
+<span class="k">const</span> tl = gsap.timeline({ paused: <span class="k">true</span>, defaults: { duration: 0.6, ease: <span class="k">"power2.inOut"</span> } });
+
+tl.addLabel(<span class="k">"intro"</span>)
+  .from(<span class="k">".card"</span>, { scale: 0, rotate: -180, stagger: 0.12 })
+  .addLabel(<span class="k">"spread"</span>)
+  .to(<span class="k">"#c1"</span>, { x: -80, y: -60 })
+  .to(<span class="k">"#c2"</span>, { y: -90 }, <span class="k">"&lt;"</span>)
+  .to(<span class="k">"#c3"</span>, { x: 80, y: -60 }, <span class="k">"&lt;"</span>)
+  .addLabel(<span class="k">"gather"</span>)
+  .to(<span class="k">".card"</span>, { x: 0, y: 0, rotate: 360 })
+  .addLabel(<span class="k">"outro"</span>)
+  .to(<span class="k">"#title"</span>, { opacity: 1, y: 10 });
+
+<span class="c">// 之后就能随意操控：</span>
+tl.play(); tl.pause(); tl.reverse();
+tl.progress(0.5); tl.timeScale(2); tl.seek(<span class="k">"gather"</span>);</pre>
+
+<script src="../lib/gsap.min.js"></script>
+<script>
+  const seek = document.getElementById('seek');
+  const tCur = document.getElementById('tCur');
+  const tAll = document.getElementById('tAll');
+
+  // paused: true 表示创建后不自动播放，等我们手动 play()
+  const tl = gsap.timeline({
+    paused: true,
+    defaults: { duration: 0.6, ease: 'power2.inOut' },
+    // 每帧同步一次进度条和读秒
+    onUpdate() {
+      seek.value = tl.progress() * 1000;
+      tCur.textContent = tl.time().toFixed(2) + 's';
+    }
+  });
+
+  tl.addLabel('intro')
+    .from('.card', { scale: 0, rotate: -180, stagger: 0.12 })
+    .addLabel('spread')
+    .to('#c1', { x: -80, y: -60 })
+    .to('#c2', { y: -90 }, '<')
+    .to('#c3', { x: 80, y: -60 }, '<')
+    .addLabel('gather')
+    .to('.card', { x: 0, y: 0, rotate: 360 })
+    .addLabel('outro')
+    .to('#title', { opacity: 1, y: 10 });
+
+  tAll.textContent = '/ ' + tl.duration().toFixed(2) + 's';
+
+  document.getElementById('play').onclick = () => tl.play();
+  document.getElementById('pause').onclick = () => tl.pause();
+  document.getElementById('reverse').onclick = () => tl.reverse();
+  document.getElementById('restart').onclick = () => tl.restart();
+  document.getElementById('half').onclick = () => tl.pause().progress(0.5);
+  document.getElementById('complete').onclick = () => tl.pause().progress(1);
+
+  // 拖动进度条 = 手动 seek，动画会跟着走到那一帧
+  seek.addEventListener('input', () => {
+    tl.pause().progress(seek.value / 1000);
+    tCur.textContent = tl.time().toFixed(2) + 's';
+  });
+
+  // timeScale 变速，1 以上加速，小于 1 慢放
+  document.querySelectorAll('.speed button').forEach(b => {
+    b.onclick = () => {
+      document.querySelectorAll('.speed button').forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+      tl.timeScale(parseFloat(b.dataset.s));
+    };
+  });
+
+  // 跳到某个命名标签，比记秒数可维护
+  document.querySelectorAll('.labels button').forEach(b => {
+    b.onclick = () => tl.pause().seek(b.dataset.l);
+  });
+
+  tl.play();
+</script>
+</body>
+</html>
