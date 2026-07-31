@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>scrub 对比 · 动画绑死滚动条</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+  }
+  .intro {
+    min-height: 55vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 14px; padding: 40px 24px; text-align: center;
+  }
+  h1 { font-size: 26px; font-weight: 700; }
+  .sub { font-size: 14px; opacity: .55; max-width: 700px; line-height: 1.8; }
+  .arrow { font-size: 30px; opacity: .35; }
+  /* 三条轨道并排，同一段滚动区间内对比不同 scrub 值 */
+  .sticky {
+    position: sticky; top: 0; height: 100vh;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px;
+    padding: 30px 24px;
+  }
+  .panel {
+    width: min(760px, 100%); background: #161b22;
+    border: 1px solid #30363d; border-radius: 16px; padding: 22px 26px;
+  }
+  .row { margin-bottom: 20px; }
+  .row:last-child { margin-bottom: 0; }
+  .rlabel {
+    font-size: 12.5px; font-family: ui-monospace, Menlo, monospace;
+    color: #58e6a8; margin-bottom: 3px;
+  }
+  .rdesc { font-size: 12px; opacity: .5; margin-bottom: 9px; }
+  .track {
+    height: 46px; background: #0d1117; border: 1px solid #21262d;
+    border-radius: 10px; position: relative; overflow: hidden;
+  }
+  .runner {
+    position: absolute; left: 6px; top: 6px; width: 32px; height: 32px;
+    border-radius: 9px;
+  }
+  .progress {
+    width: min(760px, 100%); display: flex; align-items: center; gap: 12px;
+    font-size: 12px; font-family: ui-monospace, Menlo, monospace; opacity: .6;
+  }
+  .pbar { flex: 1; height: 6px; background: #161b22; border-radius: 3px; overflow: hidden; }
+  .pfill { height: 100%; width: 0; background: #58e6a8; }
+  /* 撑出滚动距离 */
+  .spacer { height: 260vh; }
+  .tail {
+    min-height: 60vh; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; padding: 40px 24px; gap: 16px; text-align: center;
+  }
+  pre {
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    padding: 16px 20px; font-size: 13px; line-height: 1.75;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #8b949e; width: min(760px, 100%); overflow-x: auto; text-align: left;
+  }
+  pre .k { color: #58e6a8; }
+  pre .c { color: #6e7681; }
+  .note { font-size: 13px; color: #8b949e; line-height: 1.9; max-width: 720px; }
+  .note b { color: #58e6a8; }
+</style>
+</head>
+<body>
+  <div class="intro">
+    <h1>scrub · 把动画绑死在滚动条上</h1>
+    <p class="sub">
+      普通触发是「滚到这儿就播完」，scrub 是「<b>你滚多少它走多少</b>」——停下它就停，往回滚它就倒着走。
+      产品 360° 展示、图表随滚动生长都靠这个。<br>
+      下面三条轨道共用同一段滚动区间，区别只有 scrub 的取值。<b>快速滚动</b>时差异最明显。
+    </p>
+    <div class="arrow">↓</div>
+  </div>
+
+  <div class="sticky">
+    <div class="panel">
+      <div class="row">
+        <div class="rlabel">scrub: true</div>
+        <div class="rdesc">完全同步，一帧不差。手感最「硬」，快速滚动时会显得生硬。</div>
+        <div class="track"><div class="runner" id="r1" style="background:#58e6a8"></div></div>
+      </div>
+      <div class="row">
+        <div class="rlabel">scrub: 1</div>
+        <div class="rdesc">播放头用 1 秒追赶滚动位置。有阻尼感，是绝大多数场景的最优解。</div>
+        <div class="track"><div class="runner" id="r2" style="background:#3b82f6"></div></div>
+      </div>
+      <div class="row">
+        <div class="rlabel">scrub: 3</div>
+        <div class="rdesc">追赶得更慢，明显拖尾。停止滚动后还会继续走一段，适合做「慵懒」的氛围感。</div>
+        <div class="track"><div class="runner" id="r3" style="background:#f0883e"></div></div>
+      </div>
+    </div>
+
+    <div class="progress">
+      <span>滚动进度</span>
+      <div class="pbar"><div class="pfill" id="pfill"></div></div>
+      <span id="ptext">0%</span>
+    </div>
+  </div>
+
+  <div class="spacer"></div>
+
+  <div class="tail">
+    <pre><span class="c">// scrub 只能加在顶层 tween / timeline 上，不能加在时间轴内部的子动画上</span>
+gsap.to(<span class="k">".runner"</span>, {
+  x: 600,
+  <span class="c">// ease 在 scrub 模式下通常要设成 "none"</span>
+  <span class="c">// 否则「滚动位置 → 动画进度」之间会再套一层曲线，手感变得不可预测</span>
+  ease: <span class="k">"none"</span>,
+  scrollTrigger: {
+    trigger: <span class="k">".section"</span>,
+    start: <span class="k">"top top"</span>,
+    end: <span class="k">"bottom bottom"</span>,
+    scrub: <span class="k">1</span>          <span class="c">// true = 硬同步；数字 = 追赶所需秒数</span>
+  }
+});</pre>
+    <p class="note">
+      <b>两条实战经验：</b>
+      ① scrub 动画的 <b>ease 一律写 "none"</b>，让滚动距离和动画进度保持线性关系；想要节奏感就调 start/end 的区间长度。<br>
+      ② 数字型 scrub 会在滚动停止后继续补间，所以 <b>onScrubComplete</b> 才是「真正播完」的回调，onComplete 在这里不好使。
+    </p>
+  </div>
+
+<script src="../lib/gsap.min.js"></script>
+<script src="../lib/ScrollTrigger.min.js"></script>
+<script>
+  gsap.registerPlugin(ScrollTrigger);
+
+  const spacer = document.querySelector('.spacer');
+
+  function dist() {
+    return document.querySelector('.track').clientWidth - 32 - 12;
+  }
+
+  // 三条轨道，动画完全相同，只有 scrub 取值不同
+  [['#r1', true], ['#r2', 1], ['#r3', 3]].forEach(([sel, scrub]) => {
+    gsap.to(sel, {
+      x: dist,
+      rotate: 360,
+      // scrub 模式下 ease 必须是 none，否则手感会被二次加工
+      ease: 'none',
+      scrollTrigger: {
+        trigger: spacer,
+        start: 'top top',
+        end: 'bottom bottom',
+        scrub,
+        invalidateOnRefresh: true   // 窗口尺寸变化时重新计算 x 的函数式取值
+      }
+    });
+  });
+
+  // 顶部进度条：用一个独立的 ScrollTrigger 读 self.progress
+  ScrollTrigger.create({
+    trigger: spacer,
+    start: 'top top',
+    end: 'bottom bottom',
+    onUpdate: self => {
+      document.getElementById('pfill').style.width = self.progress * 100 + '%';
+      document.getElementById('ptext').textContent = (self.progress * 100).toFixed(0) + '%';
+    }
+  });
+</script>
+</body>
+</html>

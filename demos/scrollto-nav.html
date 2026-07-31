@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ScrollToPlugin · 平滑锚点与阅读进度</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+  }
+  /* 顶部进度条 + 导航 */
+  .topbar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+    background: rgba(13,17,23,.86); backdrop-filter: blur(10px);
+    border-bottom: 1px solid #21262d;
+  }
+  .progress { height: 3px; background: transparent; }
+  .progress i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #58e6a8, #3b82f6); }
+  nav {
+    display: flex; gap: 6px; padding: 10px 18px; overflow-x: auto; align-items: center;
+  }
+  nav button {
+    background: transparent; color: #8b949e; border: 1px solid transparent;
+    border-radius: 8px; padding: 7px 13px; font-size: 13px;
+    font-family: inherit; cursor: pointer; white-space: nowrap; transition: all .2s;
+  }
+  nav button:hover { color: #e6edf3; }
+  nav button.on { background: rgba(88,230,168,.13); color: #58e6a8; border-color: #58e6a8; }
+  nav .spacer { flex: 1; }
+  nav .ease {
+    font-size: 11px; opacity: .5; font-family: ui-monospace, Menlo, monospace; white-space: nowrap;
+  }
+  .hero {
+    min-height: 88vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 16px; padding: 90px 24px 40px; text-align: center;
+  }
+  h1 { font-size: 28px; font-weight: 800; }
+  .sub { font-size: 14px; opacity: .55; max-width: 700px; line-height: 1.8; }
+  section {
+    min-height: 88vh; padding: 90px 24px 40px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+  }
+  .card {
+    width: min(720px, 100%); background: #161b22; border: 1px solid #30363d;
+    border-radius: 16px; padding: 30px 32px;
+  }
+  h2 { font-size: 22px; font-weight: 700; margin-bottom: 10px; }
+  h2 span { color: #58e6a8; font-size: 14px; font-family: ui-monospace, Menlo, monospace; }
+  p.body { font-size: 14px; opacity: .6; line-height: 1.9; }
+  pre {
+    background: #0d1117; border: 1px solid #21262d; border-radius: 10px;
+    padding: 14px 18px; font-size: 12.5px; line-height: 1.75; margin-top: 16px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #8b949e; overflow-x: auto;
+  }
+  pre .k { color: #58e6a8; }
+  pre .c { color: #6e7681; }
+  /* 内部可滚动容器：演示 scroller 不是 window 的情况 */
+  .inner {
+    width: min(720px, 100%); height: 220px; overflow-y: auto;
+    background: #0d1117; border: 1px solid #21262d; border-radius: 12px; padding: 16px;
+  }
+  .inner .row {
+    padding: 14px 16px; margin-bottom: 10px; border-radius: 10px;
+    background: #161b22; border: 1px solid #30363d; font-size: 13px;
+  }
+  .innerBtns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .innerBtns button {
+    background: #0d1117; color: #58e6a8; border: 1px solid #30363d;
+    border-radius: 7px; padding: 7px 14px; font-size: 12px; cursor: pointer; font-family: inherit;
+  }
+  .toTop {
+    position: fixed; right: 20px; bottom: 20px; z-index: 50;
+    width: 46px; height: 46px; border-radius: 50%; border: 1px solid #30363d;
+    background: #161b22; color: #58e6a8; font-size: 18px; cursor: pointer;
+    opacity: 0; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="progress"><i id="pfill"></i></div>
+    <nav id="nav">
+      <button data-t="#s1" class="on">01 为什么不用 CSS</button>
+      <button data-t="#s2">02 offsetY 偏移</button>
+      <button data-t="#s3">03 相对滚动</button>
+      <button data-t="#s4">04 容器内滚动</button>
+      <button data-t="#s5">05 打断与取消</button>
+      <div class="spacer"></div>
+      <span class="ease">ease: power2.inOut</span>
+    </nav>
+  </div>
+
+  <div class="hero">
+    <h1>ScrollToPlugin · 平滑锚点</h1>
+    <p class="sub">
+      浏览器原生的 <code>scroll-behavior: smooth</code> 时长写死、缓动写死、没法中途取消、也没有完成回调。
+      ScrollToPlugin 把「滚动位置」当成一个可以补间的普通属性——于是它拥有 GSAP 的一切能力。<br>
+      点上面的导航试试。
+    </p>
+  </div>
+
+  <section id="s1"><div class="card">
+    <h2>01 为什么不用原生 smooth <span>gsap.to(window, { scrollTo })</span></h2>
+    <p class="body">
+      滚动位置一旦变成可补间属性，你就能给它设 duration、ease、onComplete，甚至放进时间轴里和别的动画一起编排。
+      最实用的一点是：<b>用户一碰滚轮就能立刻取消</b>，不会出现「我想停它偏要滚完」的糟糕体验。
+    </p>
+    <pre>gsap.registerPlugin(ScrollToPlugin);
+
+gsap.to(window, {
+  duration: 1,
+  scrollTo: <span class="k">"#s3"</span>,        <span class="c">// 选择器、元素、数字像素、"max" 都行</span>
+  ease: <span class="k">"power2.inOut"</span>
+});</pre>
+  </div></section>
+
+  <section id="s2"><div class="card">
+    <h2>02 offsetY：别被固定头部挡住 <span>{ y, offsetY }</span></h2>
+    <p class="body">
+      页面有 fixed 导航栏时，直接滚到目标元素会让标题藏在导航栏底下。
+      <b>offsetY 就是给这个头部留的余量</b>——本页导航高约 52px，所以统一留了 70。
+    </p>
+    <pre>gsap.to(window, {
+  duration: 1,
+  scrollTo: { y: <span class="k">"#s2"</span>, offsetY: <span class="k">70</span> },  <span class="c">// 顶部预留 70px</span>
+  ease: <span class="k">"power2.inOut"</span>
+});</pre>
+  </div></section>
+
+  <section id="s3"><div class="card">
+    <h2>03 相对滚动与快捷值 <span>"+=600" / "max"</span></h2>
+    <p class="body">
+      除了具体目标，还能写相对量和关键字。<code>"max"</code> 会自动算出页面能滚到的最底部，
+      比手写 <code>document.body.scrollHeight</code> 省事且不会算错。
+    </p>
+    <div class="innerBtns">
+      <button onclick="gsap.to(window,{duration:.8,scrollTo:'+=600',ease:'power2.inOut'})">向下 +=600</button>
+      <button onclick="gsap.to(window,{duration:.8,scrollTo:'-=400',ease:'power2.inOut'})">向上 -=400</button>
+      <button onclick="gsap.to(window,{duration:1.4,scrollTo:'max',ease:'power3.inOut'})">滚到底 max</button>
+      <button onclick="gsap.to(window,{duration:1.4,scrollTo:0,ease:'power3.inOut'})">回到顶 0</button>
+    </div>
+  </div></section>
+
+  <section id="s4"><div class="card">
+    <h2>04 滚的不一定是窗口 <span>gsap.to(container, { scrollTo })</span></h2>
+    <p class="body">
+      第一个参数换成任意可滚动的 DOM 容器，就能在弹窗、侧边栏、聊天记录里做平滑滚动——
+      聊天应用「跳到最新消息」就是这么写的。
+    </p>
+    <div class="inner" id="innerBox"></div>
+    <div class="innerBtns">
+      <button onclick="scrollInner('#row-3')">跳到第 3 条</button>
+      <button onclick="scrollInner('#row-12')">跳到第 12 条</button>
+      <button onclick="gsap.to('#innerBox',{duration:.8,scrollTo:{y:'max'},ease:'power2.inOut'})">跳到最新</button>
+    </div>
+  </div></section>
+
+  <section id="s5"><div class="card">
+    <h2>05 用户一碰滚轮就该让路 <span>autoKill: true</span></h2>
+    <p class="body">
+      <b>autoKill 是这个插件最该记住的选项。</b>开启后，只要用户在补间过程中自己滚了一下，
+      动画立刻停手把控制权还回去。不开的话就会出现「我想停下来看，页面非要把我拖走」的抢夺感。
+    </p>
+    <pre>gsap.to(window, {
+  duration: 1.5,
+  scrollTo: { y: <span class="k">"#s1"</span>, <span class="k">autoKill</span>: <span class="k">true</span> },
+  ease: <span class="k">"power2.inOut"</span>,
+  <span class="c">// 被用户打断时也会触发，可用来复位状态</span>
+  onInterrupt: () =&gt; console.log(<span class="k">"用户接管了滚动"</span>)
+});</pre>
+    <div class="innerBtns">
+      <button onclick="longScroll()">▶ 3 秒长距离滚动（滚动过程中试着拨一下滚轮）</button>
+    </div>
+  </div></section>
+
+  <button class="toTop" id="toTop">↑</button>
+
+<script src="../lib/gsap.min.js"></script>
+<script src="../lib/ScrollToPlugin.min.js"></script>
+<script src="../lib/ScrollTrigger.min.js"></script>
+<script>
+  gsap.registerPlugin(ScrollToPlugin, ScrollTrigger);
+
+  // 顶部导航：点击平滑滚过去，offsetY 给固定头部留位置
+  document.getElementById('nav').addEventListener('click', e => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    gsap.to(window, {
+      duration: 1,
+      scrollTo: { y: btn.dataset.t, offsetY: 70, autoKill: true },
+      ease: 'power2.inOut'
+    });
+  });
+
+  // 滚动进度条
+  ScrollTrigger.create({
+    start: 0, end: 'max',
+    onUpdate: self => {
+      document.getElementById('pfill').style.width = self.progress * 100 + '%';
+    }
+  });
+
+  // 当前所在小节高亮
+  gsap.utils.toArray('section').forEach(sec => {
+    ScrollTrigger.create({
+      trigger: sec,
+      start: 'top 40%',
+      end: 'bottom 40%',
+      onToggle: self => {
+        if (!self.isActive) return;
+        document.querySelectorAll('#nav button').forEach(b =>
+          b.classList.toggle('on', b.dataset.t === '#' + sec.id));
+      }
+    });
+  });
+
+  // 回到顶部按钮：滚过一屏才出现
+  const toTop = document.getElementById('toTop');
+  ScrollTrigger.create({
+    start: 'top -80%', end: 'max',
+    onToggle: self => gsap.to(toTop, {
+      opacity: self.isActive ? 1 : 0,
+      pointerEvents: self.isActive ? 'auto' : 'none',
+      duration: 0.3
+    })
+  });
+  toTop.onclick = () => gsap.to(window, { duration: 1, scrollTo: 0, ease: 'power3.inOut' });
+
+  // 容器内滚动的演示数据
+  const inner = document.getElementById('innerBox');
+  for (let i = 1; i <= 16; i++) {
+    const r = document.createElement('div');
+    r.className = 'row';
+    r.id = 'row-' + i;
+    r.textContent = `第 ${i} 条记录 · 这是容器内部的可滚动列表`;
+    inner.appendChild(r);
+  }
+  // 注意第一个参数是容器本身，不是 window
+  window.scrollInner = sel => gsap.to('#innerBox', {
+    duration: 0.8,
+    scrollTo: { y: sel, offsetY: 8 },
+    ease: 'power2.inOut'
+  });
+
+  // autoKill 演示：故意做一次很慢的长距离滚动
+  window.longScroll = () => gsap.to(window, {
+    duration: 3,
+    scrollTo: { y: '#s1', offsetY: 70, autoKill: true },
+    ease: 'power1.inOut',
+    onInterrupt: () => console.log('用户接管了滚动，补间已中止')
+  });
+</script>
+</body>
+</html>
