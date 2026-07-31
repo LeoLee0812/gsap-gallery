@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GSAP 动效图鉴 · 72 个可交互 Demo</title>
+<meta name="description" content="按官方 gsap-skills 全量覆盖的 GSAP 动效合集，72 个可交互 demo，全部离线可用，中文注释。">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #0d1117; --card: #161b22; --line: #30363d; --line2: #21262d;
+    --fg: #e6edf3; --dim: #8b949e; --green: #58e6a8; --blue: #3b82f6; --orange: #f0883e;
+  }
+  body {
+    background: var(--bg); color: var(--fg);
+    font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+    line-height: 1.6; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 24px; }
+
+  /* ---------- Hero ---------- */
+  header {
+    padding: 76px 0 40px; text-align: center; position: relative; overflow: hidden;
+  }
+  /* 背景网格由 GSAP 做缓慢漂移 */
+  #bgGrid {
+    position: absolute; inset: -50%; z-index: 0; opacity: .4;
+    background-image:
+      linear-gradient(var(--line2) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line2) 1px, transparent 1px);
+    background-size: 52px 52px;
+    mask-image: radial-gradient(ellipse 60% 55% at 50% 40%, #000 20%, transparent 75%);
+    -webkit-mask-image: radial-gradient(ellipse 60% 55% at 50% 40%, #000 20%, transparent 75%);
+  }
+  header > * { position: relative; z-index: 1; }
+  h1 {
+    font-size: clamp(32px, 6vw, 54px); font-weight: 900; letter-spacing: -1px;
+    background: linear-gradient(135deg, var(--green), var(--blue));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    line-height: 1.15;
+  }
+  /* 逐字动画需要 inline-block，但那样每个 span 会脱离 h1 的背景绘制上下文，
+     导致 background-clip: text 失效、文字变成纯透明。
+     解决办法：每个 span 自带同一条渐变，再用 JS 按它在标题里的横向位置偏移
+     background-position，视觉上重新拼成一条完整渐变。 */
+  h1 .ch {
+    display: inline-block;
+    background-image: linear-gradient(135deg, var(--green), var(--blue));
+    -webkit-background-clip: text; background-clip: text;
+    color: transparent;
+  }
+  .tagline {
+    font-size: 15px; color: var(--dim); margin-top: 16px; max-width: 620px;
+    margin-left: auto; margin-right: auto; line-height: 1.85;
+  }
+  .stats {
+    display: flex; gap: 34px; justify-content: center; margin-top: 30px; flex-wrap: wrap;
+  }
+  .stat .num {
+    font-size: 30px; font-weight: 800; color: var(--green);
+    font-variant-numeric: tabular-nums; line-height: 1;
+  }
+  .stat .lab { font-size: 12px; color: var(--dim); margin-top: 6px; }
+  .badges { display: flex; gap: 8px; justify-content: center; margin-top: 24px; flex-wrap: wrap; }
+  .badge {
+    font-size: 12px; padding: 6px 13px; border-radius: 20px;
+    border: 1px solid var(--line); color: var(--dim); background: rgba(22,27,34,.7);
+  }
+  .badge b { color: var(--green); }
+
+  /* ---------- 工具条 ---------- */
+  .toolbar {
+    position: sticky; top: 0; z-index: 30; padding: 14px 0 12px;
+    background: rgba(13,17,23,.9); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line2);
+  }
+  .searchRow { display: flex; gap: 10px; align-items: center; }
+  .searchBox { flex: 1; position: relative; }
+  .searchBox input {
+    width: 100%; background: var(--card); border: 1px solid var(--line);
+    border-radius: 11px; padding: 11px 16px 11px 40px; color: var(--fg);
+    font-size: 14px; font-family: inherit; outline: none; transition: border-color .2s;
+  }
+  .searchBox input:focus { border-color: var(--green); }
+  .searchBox input::placeholder { color: #6e7681; }
+  .searchBox .ico {
+    position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+    opacity: .4; font-size: 15px; pointer-events: none;
+  }
+  .clearBtn {
+    background: var(--card); border: 1px solid var(--line); color: var(--dim);
+    border-radius: 11px; padding: 11px 16px; font-size: 13px; cursor: pointer;
+    font-family: inherit; white-space: nowrap;
+  }
+  .clearBtn:hover { border-color: var(--green); color: var(--fg); }
+  .chips {
+    display: flex; gap: 7px; flex-wrap: wrap; margin-top: 11px;
+  }
+  .chip {
+    background: transparent; border: 1px solid var(--line); color: var(--dim);
+    border-radius: 20px; padding: 6px 14px; font-size: 12.5px; cursor: pointer;
+    font-family: inherit; transition: all .16s; white-space: nowrap;
+  }
+  .chip:hover { border-color: var(--green); color: var(--fg); }
+  .chip.on { background: var(--green); color: var(--bg); border-color: var(--green); font-weight: 600; }
+  .chip .cnt { opacity: .55; margin-left: 4px; font-size: 11px; }
+
+  /* ---------- 分组 ---------- */
+  .group { padding-top: 38px; }
+  .ghead { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+  .ghead h2 {
+    font-size: 19px; font-weight: 700; padding-left: 11px;
+    border-left: 3px solid var(--green);
+  }
+  .ghead .gcnt { font-size: 12px; color: var(--dim); }
+  .gdesc { font-size: 13px; color: var(--dim); margin: 0 0 16px 14px; line-height: 1.75; }
+
+  /* ---------- 卡片 ---------- */
+  .grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(258px, 1fr)); gap: 13px;
+  }
+  a.card {
+    display: block; background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; padding: 15px 17px; text-decoration: none; color: var(--fg);
+    position: relative; overflow: hidden;
+    transition: border-color .18s, background .18s;
+  }
+  a.card::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(340px circle at var(--mx, 50%) var(--my, 50%), rgba(88,230,168,.09), transparent 62%);
+    opacity: 0; transition: opacity .25s;
+  }
+  a.card:hover { border-color: var(--green); background: #1a212b; }
+  a.card:hover::after { opacity: 1; }
+  .card .t { font-size: 15px; font-weight: 650; display: flex; align-items: center; gap: 7px; }
+  .card .d { font-size: 12.5px; color: var(--dim); margin-top: 5px; line-height: 1.6; min-height: 40px; }
+  .card .tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 10px; }
+  .card .tag {
+    font-size: 10.5px; color: var(--green); border: 1px solid rgba(88,230,168,.28);
+    background: rgba(88,230,168,.07); border-radius: 5px; padding: 2px 7px;
+  }
+  .card .tag.plug { color: var(--blue); border-color: rgba(59,130,246,.3); background: rgba(59,130,246,.07); }
+  .new {
+    font-size: 9.5px; font-weight: 800; padding: 2px 6px; border-radius: 4px;
+    background: var(--orange); color: var(--bg); letter-spacing: .3px; flex-shrink: 0;
+  }
+  .empty {
+    text-align: center; padding: 70px 20px; color: var(--dim); font-size: 14px; display: none;
+  }
+  .empty.on { display: block; }
+
+  /* ---------- 页脚 ---------- */
+  footer {
+    margin-top: 70px; padding: 34px 0 60px; border-top: 1px solid var(--line2);
+    text-align: center; font-size: 13px; color: var(--dim); line-height: 2;
+  }
+  footer a { color: var(--green); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+  .backTop {
+    position: fixed; right: 22px; bottom: 22px; z-index: 40;
+    width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line);
+    background: var(--card); color: var(--green); font-size: 17px; cursor: pointer;
+    opacity: 0; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div id="bgGrid"></div>
+  <div class="wrap">
+    <h1 id="title">GSAP 动效图鉴</h1>
+    <p class="tagline" id="tagline">
+      按 GreenSock 官方 gsap-skills 全量覆盖的动效合集。
+      每个 demo 都能直接玩、直接抄，全部离线运行，代码带中文注释。
+    </p>
+    <div class="stats">
+      <div class="stat"><div class="num" data-n="72">0</div><div class="lab">可交互 Demo</div></div>
+      <div class="stat"><div class="num" data-n="9">0</div><div class="lab">主题分类</div></div>
+      <div class="stat"><div class="num" data-n="25">0</div><div class="lab">GSAP 插件</div></div>
+      <div class="stat"><div class="num" data-n="0" data-suffix="¥">0</div><div class="lab">全部免费</div></div>
+    </div>
+    <div class="badges">
+      <span class="badge">GSAP <b>3.13</b></span>
+      <span class="badge">插件<b> 100% 免费</b>（含原 Club GSAP）</span>
+      <span class="badge">零依赖 · 纯静态</span>
+      <span class="badge">中文注释</span>
+    </div>
+  </div>
+</header>
+
+<div class="toolbar">
+  <div class="wrap">
+    <div class="searchRow">
+      <div class="searchBox">
+        <span class="ico">🔍</span>
+        <input type="text" id="search" placeholder="搜索动效、插件名、关键词…（比如 滚动、SplitText、抖动）">
+      </div>
+      <button class="clearBtn" id="clear">重置</button>
+    </div>
+    <div class="chips" id="chips"></div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div id="groups"></div>
+  <div class="empty" id="empty">没有匹配的动效，换个关键词试试</div>
+</div>
+
+<footer>
+  <div class="wrap">
+    72 个 demo 全部基于 <a href="https://gsap.com" target="_blank" rel="noopener">GSAP 3.13</a>，
+    库文件在 <code>./lib/</code>，断网也能跑。<br>
+    动效清单对照 <a href="https://github.com/greensock/gsap-skills" target="_blank" rel="noopener">greensock/gsap-skills</a> 官方技能库全量补齐。<br>
+    <span style="opacity:.6">GSAP 自 Webflow 收购后全部插件免费商用，无需 Club 会员或 auth token。</span>
+  </div>
+</footer>
+
+<button class="backTop" id="backTop">↑</button>
+
+<script src="./lib/gsap.min.js"></script>
+<script src="./lib/ScrollTrigger.min.js"></script>
+<script src="./lib/ScrollToPlugin.min.js"></script>
+<script>
+  gsap.registerPlugin(ScrollTrigger, ScrollToPlugin);
+
+  // ============ 数据 ============
+  // isNew 标记本轮按 gsap-skills 补齐的新 demo
+  const GROUPS = [
+    {
+      id: 'core',
+      name: '核心与手感',
+      desc: '一条动画是怎么构成的：速度曲线、错开节奏、变换属性、关键帧、循环。这一组是所有其他动效的地基。',
+      items: [
+        { f: 'ease-visualizer', t: 'Ease 缓动全览', d: '38 条内置曲线并排对比，曲线图 + 小球同步跑', tags: ['core'], isNew: 1 },
+        { f: 'stagger-playground', t: 'Stagger 实验台', d: 'from/grid/axis/each 实时切换，看清扩散方向', tags: ['core'], isNew: 1 },
+        { f: 'transform-aliases', t: 'Transform 速查台', d: 'x/y/scale/rotation/skew 滑块实时调，含方向性旋转', tags: ['core'], isNew: 1 },
+        { f: 'keyframes', t: '关键帧 keyframes', d: '数组 / 百分比 / 属性内联三种写法对比', tags: ['core'], isNew: 1 },
+        { f: 'repeat-yoyo', t: '循环与呼吸', d: 'repeat/yoyo/repeatDelay/repeatRefresh + 4 个待机动效', tags: ['core'], isNew: 1 },
+        { f: 'overwrite-modes', t: 'overwrite 冲突处理', d: '两条动画抢同一元素时怎么办，含 hover 实战', tags: ['core'], isNew: 1 },
+        { f: 'matchmedia-responsive', t: '响应式与无障碍', d: 'matchMedia 断点切换 + prefers-reduced-motion 降级', tags: ['core', 'a11y'], isNew: 1 },
+        { f: 'core-stagger', t: '交错网格', d: '24 个方块从中心波纹扩散', tags: ['core'] }
+      ]
+    },
+    {
+      id: 'timeline',
+      name: '时间轴编排',
+      desc: '多个元素的先后顺序、重叠、停顿怎么控制。会用时间轴之后，就不该再手写 delay 了。',
+      items: [
+        { f: 'timeline-position', t: '位置参数可视化', d: '"<" ">" "+=" 标签七种模式 + 甘特图对照', tags: ['timeline'], isNew: 1 },
+        { f: 'timeline-controls', t: '播放控制台', d: 'play/pause/reverse/seek/timeScale 全套 + 拖动进度条', tags: ['timeline'], isNew: 1 },
+        { f: 'timeline-nesting', t: '嵌套时间轴', d: '每个场景独立成函数，master 拼装，可单独调试', tags: ['timeline'], isNew: 1 }
+      ]
+    },
+    {
+      id: 'scroll',
+      name: '滚动叙事',
+      desc: '滚动条驱动的一切：触发、钉住、擦洗、吸附、批量入场。做落地页最值钱的一组。',
+      items: [
+        { f: 'scrolltrigger-toggleactions', t: 'toggleActions 四态', d: '滚进滚出各做什么，五种配置横向对比', tags: ['ScrollTrigger'], isNew: 1 },
+        { f: 'scrolltrigger-scrub', t: 'scrub 对比', d: 'true / 1 / 3 三条轨道同屏，看清阻尼差异', tags: ['ScrollTrigger'], isNew: 1 },
+        { f: 'scrolltrigger-pin', t: 'pin 钉住深入', d: 'pinSpacing 对比 + 假横向滚动 + 四个高频坑', tags: ['ScrollTrigger'], isNew: 1 },
+        { f: 'scrolltrigger-snap', t: '滚动吸附 snap', d: '均分 / 指定点位 / 关闭三种模式实时切换', tags: ['ScrollTrigger'], isNew: 1 },
+        { f: 'scrolltrigger-batch', t: 'batch 批量入场', d: '60 张卡片分批级联，batchMax 可调', tags: ['ScrollTrigger'], isNew: 1 },
+        { f: 'scrollto-nav', t: '平滑锚点导航', d: 'ScrollToPlugin：offsetY / 容器内滚动 / autoKill', tags: ['ScrollToPlugin'], isNew: 1 },
+        { f: 'scrolltrigger-basics', t: 'ScrollTrigger 全家桶', d: '进度条 + 进场 + 钉住旋转', tags: ['ScrollTrigger'] },
+        { f: 'horizontal-scroll', t: '横向滚动画廊', d: '纵向滚动驱动卡片横移', tags: ['ScrollTrigger'] },
+        { f: 'scrollsmoother', t: '平滑滚动视差', d: '惯性滚动 + 多层视差', tags: ['ScrollSmoother'] },
+        { f: 'clippath-reveal', t: '图片遮罩揭示', d: 'clip-path 拉幕效果', tags: ['ScrollTrigger'] },
+        { f: 'draw-on-scroll', t: '路径随滚动绘制', d: 'SVG 曲线逐段画出', tags: ['DrawSVG'] },
+        { f: 'stacking-cards', t: '堆叠卡片', d: '卡片随滚动层叠堆积', tags: ['ScrollTrigger'] },
+        { f: 'parallax-hero', t: '鼠标视差英雄区', d: '多层景深偏移', tags: ['core'] },
+        { f: 'fullpage-snap', t: '全屏整屏翻页', d: '手势一次翻一屏', tags: ['Observer'] }
+      ]
+    },
+    {
+      id: 'interact',
+      name: '交互手感',
+      desc: '用户的手在推：拖拽、惯性、悬停、手势。这一组决定了产品「跟不跟手」。',
+      items: [
+        { f: 'observer-gestures', t: 'Observer 统一手势', d: '滚轮/触摸/拖拽归一成一套回调 + 实时数据面板', tags: ['Observer'], isNew: 1 },
+        { f: 'inertia-flick', t: '惯性与吸附', d: 'InertiaPlugin：滑行 / 网格吸附 / 边界回弹 / 惯性列表', tags: ['Inertia'], isNew: 1 },
+        { f: 'flip-gallery', t: '相册展开', d: '缩略图放大成详情，布局自动过渡', tags: ['Flip'] },
+        { f: 'flip-layout', t: '布局切换', d: '网格 ↔ 列表平滑变形', tags: ['Flip'] },
+        { f: 'lightbox', t: '灯箱画廊', d: '点击放大到灯箱', tags: ['Flip'] },
+        { f: 'draggable-ball', t: '小球拖拽', d: '甩动 + 边界回弹', tags: ['Draggable'] },
+        { f: 'draggable-carousel', t: '拖拽轮播', d: '惯性滑动 + 吸附', tags: ['Draggable'] },
+        { f: 'magnetic-cursor', t: '磁吸光标', d: '自定义光标跟随 + 按钮磁吸', tags: ['core'] },
+        { f: 'tilt-card', t: '3D 倾斜卡片', d: '透视翻转 + 高光跟随', tags: ['core'] },
+        { f: 'flip-card', t: '3D 翻牌卡片', d: '绕 Y 轴翻转露出背面', tags: ['core'] },
+        { f: 'mouse-trail', t: '鼠标拖尾', d: '光斑尾迹 + 粒子', tags: ['core'] },
+        { f: 'theme-toggle', t: '明暗主题切换', d: '圆形遮罩扩散过渡', tags: ['core'] },
+        { f: 'star-rating', t: '星级评分', d: '悬停点亮 + 庆祝弹跳', tags: ['core'] }
+      ]
+    },
+    {
+      id: 'text',
+      name: '文字动效',
+      desc: '标题是页面上最该做动效的地方。逐字、逐行、解码、打字。',
+      items: [
+        { f: 'typewriter', t: '打字机', d: '逐字打字 + 退格 + 闪烁光标', tags: ['TextPlugin'] },
+        { f: 'splittext-title', t: '逐字标题', d: '标题逐字弹起 + 波浪', tags: ['SplitText'] },
+        { f: 'splittext-hero', t: '落地页 Hero', d: '大标题逐字入场 + CTA', tags: ['SplitText'] },
+        { f: 'scramble-text', t: '文字解码', d: '乱码闪动归位，黑客风', tags: ['ScrambleText'] },
+        { f: 'lines-reveal', t: '逐行遮罩揭示', d: '每行从遮罩后升起', tags: ['SplitText'] }
+      ]
+    },
+    {
+      id: 'ui',
+      name: 'UI 组件',
+      desc: '产品里天天要写的那些：弹窗、手风琴、标签页、通知、加载。抄完即用。',
+      items: [
+        { f: 'stagger-menu', t: '级联菜单', d: '菜单项依次滑入', tags: ['core'] },
+        { f: 'preloader', t: '页面预加载', d: '进度条 + 遮罩揭开', tags: ['core'] },
+        { f: 'accordion', t: '手风琴 FAQ', d: '高度平滑展开收起', tags: ['core'] },
+        { f: 'tabs', t: '标签页过渡', d: '指示条滑动 + 内容淡入', tags: ['core'] },
+        { f: 'toast', t: 'Toast 通知', d: '滑入堆叠 + 自动消失', tags: ['core'] },
+        { f: 'modal', t: '模态框弹出', d: '遮罩 + 弹性放大', tags: ['core'] },
+        { f: 'progress-ring', t: '圆形进度环', d: '画环 + 数字递增', tags: ['DrawSVG'] },
+        { f: 'counter', t: '数字计数器', d: '从 0 递增 + 千分位格式化', tags: ['core'] },
+        { f: 'flip-clock', t: '翻页数字时钟', d: 'split-flap 机械翻页', tags: ['core'] },
+        { f: 'skeleton', t: '骨架屏加载', d: 'shimmer 扫光', tags: ['core'] },
+        { f: 'pricing', t: '定价卡片', d: '入场 + 推荐卡浮动', tags: ['core'] },
+        { f: 'marquee', t: '无缝跑马灯', d: '双向无缝循环滚动', tags: ['core'] }
+      ]
+    },
+    {
+      id: 'svg',
+      name: 'SVG · 路径 · 物理',
+      desc: '图形本身的动效：描线、变形、沿路径飞行、重力抛射。',
+      items: [
+        { f: 'motionpath-editor', t: 'MotionPath 进阶', d: '拖锚点改路径 + autoRotate / alignOrigin 实时对比', tags: ['MotionPath'], isNew: 1 },
+        { f: 'physics-props', t: '物理模拟', d: 'Physics2D 抛射 / 摩擦扩散 + PhysicsProps 多属性', tags: ['Physics2D'], isNew: 1 },
+        { f: 'wiggle-bounce', t: '抖动与弹跳', d: 'CustomWiggle / CustomBounce 含挤压变形', tags: ['CustomWiggle'], isNew: 1 },
+        { f: 'custom-ease', t: '自画缓动曲线', d: 'CustomEase 可拖控制点编辑器 + SVG path 复杂曲线', tags: ['CustomEase'], isNew: 1 },
+        { f: 'easepack-extras', t: 'EasePack 特种缓动', d: 'Rough 故障 / SlowMo 子弹时间 / Stepped / ExpoScale', tags: ['EasePack'], isNew: 1 },
+        { f: 'morph-icon', t: '图标变形', d: '汉堡↔X、播放↔暂停', tags: ['MorphSVG'] },
+        { f: 'morphsvg', t: '形状变形', d: '心→星→圆→闪电', tags: ['MorphSVG'] },
+        { f: 'drawsvg', t: '线条绘制', d: '圆环 + 对勾被画出来', tags: ['DrawSVG'] },
+        { f: 'logo-draw', t: 'Logo 绘制', d: '描边 + 填色定格', tags: ['DrawSVG'] },
+        { f: 'motionpath', t: '路径飞行', d: '火箭沿曲线 + 自动转向', tags: ['MotionPath'] },
+        { f: 'physics-confetti', t: '撒花庆祝', d: '彩纸抛物线四散', tags: ['Physics2D'] }
+      ]
+    },
+    {
+      id: 'perf',
+      name: '工具与性能',
+      desc: '不是动效本身，但决定动效好不好用：数学工具、高频更新写法、卡顿根因、调试面板。',
+      items: [
+        { f: 'utils-playground', t: 'gsap.utils 实验台', d: 'clamp/mapRange/snap/wrap/pipe 十个工具全交互演示', tags: ['utils'], isNew: 1 },
+        { f: 'quickto-performance', t: 'quickTo 高频更新', d: '对比每帧新建 tween，含 400 点压力测试 + FPS', tags: ['perf'], isNew: 1 },
+        { f: 'transform-vs-layout', t: '卡顿从哪来', d: 'transform vs left/top 双屏实测，附属性速查表', tags: ['perf'], isNew: 1 },
+        { f: 'gsdevtools', t: 'GSDevTools 调试面板', d: '拖进度、循环片段、变速看清快动作', tags: ['GSDevTools'], isNew: 1 }
+      ]
+    },
+    {
+      id: 'framework',
+      name: '框架集成',
+      desc: 'React / Vue / Svelte 里怎么正确接入：生命周期、作用域、清理、SSR。',
+      items: [
+        { f: 'react-usegsap', t: 'React / Next.js', d: 'useGSAP 完整指南：scope、contextSafe、SSR、常见错误', tags: ['React'], isNew: 1 },
+        { f: 'vue-svelte-lifecycle', t: 'Vue / Nuxt / Svelte', d: 'gsap.context、生命周期钩子、SSR 处理、Svelte action', tags: ['Vue', 'Svelte'], isNew: 1 }
+      ]
+    }
+  ];
+
+  // ============ 渲染 ============
+  const groupsEl = document.getElementById('groups');
+  const chipsEl = document.getElementById('chips');
+
+  const total = GROUPS.reduce((s, g) => s + g.items.length, 0);
+
+  // 分类筛选按钮
+  chipsEl.innerHTML =
+    `<button class="chip on" data-g="all">全部 <span class="cnt">${total}</span></button>` +
+    GROUPS.map(g => `<button class="chip" data-g="${g.id}">${g.name} <span class="cnt">${g.items.length}</span></button>`).join('') +
+    `<button class="chip" data-g="new">🆕 本次新增 <span class="cnt">${GROUPS.reduce((s, g) => s + g.items.filter(i => i.isNew).length, 0)}</span></button>`;
+
+  // 插件类标签用蓝色区分，core/utils/perf 用绿色
+  const PLAIN = ['core', 'utils', 'perf', 'a11y', 'timeline'];
+
+  groupsEl.innerHTML = GROUPS.map(g => `
+    <section class="group" data-g="${g.id}">
+      <div class="ghead">
+        <h2>${g.name}</h2>
+        <span class="gcnt">${g.items.length} 个</span>
+      </div>
+      <p class="gdesc">${g.desc}</p>
+      <div class="grid">
+        ${g.items.map(it => `
+          <a class="card" href="./demos/${it.f}.html" target="_blank" rel="noopener"
+             data-key="${(it.t + ' ' + it.d + ' ' + it.tags.join(' ') + ' ' + it.f).toLowerCase()}"
+             data-new="${it.isNew ? 1 : 0}">
+            <div class="t">${it.t}${it.isNew ? '<span class="new">NEW</span>' : ''}</div>
+            <div class="d">${it.d}</div>
+            <div class="tags">
+              ${it.tags.map(t => `<span class="tag ${PLAIN.includes(t) ? '' : 'plug'}">${t}</span>`).join('')}
+            </div>
+          </a>
+        `).join('')}
+      </div>
+    </section>
+  `).join('');
+
+  // ============ 筛选逻辑 ============
+  const searchInput = document.getElementById('search');
+  const emptyEl = document.getElementById('empty');
+  let activeGroup = 'all';
+
+  function filter() {
+    const q = searchInput.value.trim().toLowerCase();
+    let visible = 0;
+
+    document.querySelectorAll('.group').forEach(sec => {
+      let secVisible = 0;
+      sec.querySelectorAll('.card').forEach(card => {
+        const matchText = !q || card.dataset.key.includes(q);
+        const matchGroup =
+          activeGroup === 'all' ? true :
+          activeGroup === 'new' ? card.dataset.new === '1' :
+          sec.dataset.g === activeGroup;
+        const show = matchText && matchGroup;
+        card.style.display = show ? '' : 'none';
+        if (show) secVisible++;
+      });
+      sec.style.display = secVisible ? '' : 'none';
+      visible += secVisible;
+    });
+
+    emptyEl.classList.toggle('on', visible === 0);
+  }
+
+  searchInput.addEventListener('input', filter);
+  document.getElementById('clear').addEventListener('click', () => {
+    searchInput.value = '';
+    activeGroup = 'all';
+    document.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.g === 'all'));
+    filter();
+    gsap.to(window, { duration: 0.6, scrollTo: 0, ease: 'power2.inOut' });
+  });
+
+  chipsEl.addEventListener('click', e => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
+    document.querySelectorAll('.chip').forEach(c => c.classList.remove('on'));
+    chip.classList.add('on');
+    activeGroup = chip.dataset.g;
+    filter();
+  });
+
+  // 键盘快捷键：/ 聚焦搜索
+  document.addEventListener('keydown', e => {
+    if (e.key === '/' && document.activeElement !== searchInput) {
+      e.preventDefault();
+      searchInput.focus();
+    }
+    if (e.key === 'Escape') { searchInput.value = ''; filter(); searchInput.blur(); }
+  });
+
+  // ============ 页面自身的动效（这页本身就是个 demo）============
+
+  // 标题逐字入场：手动切字，不依赖 SplitText 也能做
+  const title = document.getElementById('title');
+  title.innerHTML = title.textContent.split('').map(c =>
+    `<span class="ch">${c === ' ' ? '&nbsp;' : c}</span>`).join('');
+
+  // 把每个字符的渐变背景对齐成一整条：背景画布拉到整个标题宽，
+  // 再按字符自身的横向位置反向偏移，拼回连续的渐变。
+  function alignTitleGradient() {
+    const chars = title.querySelectorAll('.ch');
+    const w = title.clientWidth;
+    chars.forEach(ch => {
+      ch.style.backgroundSize = `${w}px 100%`;
+      ch.style.backgroundPosition = `${-ch.offsetLeft}px 0`;
+    });
+  }
+  alignTitleGradient();
+  window.addEventListener('resize', alignTitleGradient);
+
+  const intro = gsap.timeline();
+  intro
+    .from('.ch', { y: 46, opacity: 0, rotateX: -80, duration: 0.65, stagger: 0.035, ease: 'back.out(1.6)' })
+    .from('#tagline', { y: 16, opacity: 0, duration: 0.5 }, '-=0.35')
+    .from('.stat', { y: 20, opacity: 0, duration: 0.5, stagger: 0.08 }, '-=0.3')
+    .from('.badge', { y: 12, opacity: 0, scale: 0.9, duration: 0.4, stagger: 0.06 }, '-=0.25');
+  // 筛选栏不做入场动画：它是功能区，必须立刻可点，
+  // 任何让它初始不可见的动画一旦被中断都会变成「按钮永远消失」。
+
+  // 数字滚动
+  document.querySelectorAll('.stat .num').forEach(el => {
+    const target = +el.dataset.n;
+    const suffix = el.dataset.suffix || '';
+    const proxy = { v: 0 };
+    gsap.to(proxy, {
+      v: target, duration: 1.4, delay: 0.5, ease: 'power2.out',
+      onUpdate: () => el.textContent = suffix + Math.round(proxy.v)
+    });
+  });
+
+  // 背景网格缓慢漂移
+  gsap.to('#bgGrid', {
+    backgroundPosition: '52px 52px',
+    duration: 6, ease: 'none', repeat: -1
+  });
+
+  // 卡片批量入场：ScrollTrigger.batch 让滚到哪出到哪
+  gsap.set('.card', { opacity: 0, y: 26 });
+  ScrollTrigger.batch('.card', {
+    start: 'top 92%',
+    onEnter: els => gsap.to(els, {
+      opacity: 1, y: 0, duration: 0.5, stagger: 0.055, ease: 'power3.out', overwrite: true
+    }),
+    batchMax: 8,
+    interval: 0.1
+  });
+
+  // 分组标题滚入
+  gsap.utils.toArray('.ghead').forEach(h => {
+    gsap.from(h, {
+      x: -18, opacity: 0, duration: 0.5, ease: 'power2.out',
+      scrollTrigger: { trigger: h, start: 'top 90%' }
+    });
+  });
+
+  // 卡片跟随鼠标的高光：用 quickSetter 避免每帧新建 tween
+  document.querySelectorAll('.card').forEach(card => {
+    card.addEventListener('mousemove', e => {
+      const r = card.getBoundingClientRect();
+      card.style.setProperty('--mx', (e.clientX - r.left) + 'px');
+      card.style.setProperty('--my', (e.clientY - r.top) + 'px');
+    });
+  });
+
+  // 回到顶部
+  const backTop = document.getElementById('backTop');
+  ScrollTrigger.create({
+    start: 'top -60%', end: 'max',
+    onToggle: self => gsap.to(backTop, {
+      opacity: self.isActive ? 1 : 0,
+      pointerEvents: self.isActive ? 'auto' : 'none',
+      duration: 0.3
+    })
+  });
+  backTop.onclick = () => gsap.to(window, { duration: 0.8, scrollTo: 0, ease: 'power3.inOut' });
+</script>
+</body>
+</html>
