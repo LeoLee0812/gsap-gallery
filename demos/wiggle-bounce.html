@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CustomWiggle / CustomBounce · 抖动与弹跳</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh; padding: 34px 24px 60px;
+    display: flex; flex-direction: column; align-items: center; gap: 22px;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .sub { font-size: 13.5px; opacity: .55; text-align: center; max-width: 740px; line-height: 1.8; margin-top: -12px; }
+  .sect {
+    width: min(1060px, 100%); background: #161b22;
+    border: 1px solid #30363d; border-radius: 16px; padding: 20px 24px;
+  }
+  .stitle { font-size: 16px; font-weight: 700; color: #58e6a8; margin-bottom: 4px; }
+  .sdesc { font-size: 12.5px; opacity: .55; line-height: 1.7; margin-bottom: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+  .cell {
+    background: #0d1117; border: 1px solid #21262d; border-radius: 12px; padding: 13px 15px;
+    cursor: pointer; transition: border-color .18s;
+  }
+  .cell:hover { border-color: #58e6a8; }
+  .cname {
+    font-size: 12px; color: #58e6a8; font-family: ui-monospace, Menlo, monospace; margin-bottom: 8px;
+  }
+  .cdesc { font-size: 11px; opacity: .45; margin-bottom: 8px; min-height: 26px; line-height: 1.5; }
+  svg.curve { width: 100%; height: 64px; display: block; }
+  .cframe { stroke: #21262d; stroke-width: 1; fill: none; }
+  .cpath { stroke: #3b82f6; stroke-width: 2; fill: none; }
+  .stage {
+    height: 66px; margin-top: 8px; position: relative;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .chip {
+    width: 40px; height: 40px; border-radius: 11px;
+    background: linear-gradient(135deg, #58e6a8, #3b82f6);
+  }
+  /* 弹跳演示需要一条地面线 */
+  .floor { position: absolute; left: 10%; right: 10%; bottom: 6px; height: 2px; background: #30363d; }
+  .ball { width: 34px; height: 34px; border-radius: 50%; background: #f0883e; position: absolute; bottom: 8px; }
+  .squash { width: 34px; height: 34px; border-radius: 50%; background: #a371f7; position: absolute; bottom: 8px; }
+  .real { display: flex; gap: 30px; flex-wrap: wrap; justify-content: center; align-items: flex-end; }
+  .ritem { text-align: center; }
+  .rlabel { font-size: 12px; opacity: .5; margin-top: 12px; }
+  .inputbox {
+    width: 190px; padding: 11px 14px; border-radius: 10px;
+    background: #0d1117; border: 1px solid #30363d; color: #e6edf3;
+    font-size: 14px; font-family: inherit;
+  }
+  .btn {
+    background: #58e6a8; color: #0d1117; border: 0; border-radius: 10px;
+    padding: 11px 22px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit;
+  }
+  .bell { font-size: 34px; cursor: pointer; display: inline-block; }
+  pre {
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    padding: 16px 20px; font-size: 12.5px; line-height: 1.75;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #8b949e; width: min(1060px, 100%); overflow-x: auto;
+  }
+  pre .k { color: #58e6a8; }
+  pre .c { color: #6e7681; }
+  .note {
+    width: min(1060px, 100%); font-size: 13px; color: #8b949e; line-height: 1.9;
+    border-top: 1px solid #21262d; padding-top: 16px;
+  }
+  .note b { color: #58e6a8; }
+</style>
+</head>
+<body>
+  <h1>CustomWiggle / CustomBounce</h1>
+  <p class="sub">
+    这两个插件解决同一类问题：<b>把「抖动」和「弹跳」这种本来要写十几个关键帧的效果，压缩成一个 ease</b>。
+    一行 ease 换掉一整条时间轴。点任意格子播放。
+  </p>
+
+  <div class="sect">
+    <div class="stitle">CustomWiggle · 抖动</div>
+    <div class="sdesc">
+      指定<b>抖几次</b>和<b>衰减方式</b>，自动生成来回摆动的曲线。表单校验失败的抖动、图标提醒的摇晃、
+      按钮的调皮反馈，全都一行搞定。
+    </div>
+    <div class="grid" id="wiggleGrid"></div>
+  </div>
+
+  <div class="sect">
+    <div class="stitle">CustomBounce · 弹跳（含挤压变形）</div>
+    <div class="sdesc">
+      不只是「掉下来弹几下」——它还能<b>同时生成一条配套的挤压曲线</b>，让球落地时压扁、弹起时拉长。
+      这是让弹跳看起来「有重量」的关键，手写几乎不可能调准。
+    </div>
+    <div class="grid" id="bounceGrid"></div>
+  </div>
+
+  <div class="sect">
+    <div class="stitle">四个真实场景</div>
+    <div class="sdesc">这些就是 wiggle / bounce 在产品里最常出现的地方。</div>
+    <div class="real">
+      <div class="ritem">
+        <input class="inputbox" id="pwd" placeholder="随便输点什么再提交">
+        <div class="rlabel">校验失败抖动</div>
+      </div>
+      <div class="ritem">
+        <button class="btn" id="submit">提交</button>
+        <div class="rlabel">点我触发校验</div>
+      </div>
+      <div class="ritem">
+        <div class="bell" id="bell">🔔</div>
+        <div class="rlabel">通知铃铛摇晃</div>
+      </div>
+      <div class="ritem">
+        <div style="height:80px;position:relative;width:60px">
+          <div class="squash" id="dropBall" style="left:13px"></div>
+          <div style="position:absolute;left:0;right:0;bottom:6px;height:2px;background:#30363d"></div>
+        </div>
+        <div class="rlabel" style="margin-top:0">点击掉落 <button class="btn" style="padding:5px 12px;font-size:12px" id="drop">▼</button></div>
+      </div>
+    </div>
+  </div>
+
+  <pre>gsap.registerPlugin(CustomWiggle, CustomBounce, CustomEase);
+
+<span class="c">// ── 抖动 ──────────────────────────────</span>
+CustomWiggle.create(<span class="k">"shake"</span>, {
+  wiggles: <span class="k">6</span>,           <span class="c">// 来回摆动几次</span>
+  type: <span class="k">"easeOut"</span>       <span class="c">// easeOut | easeInOut | anticipate | uniform | random</span>
+});
+gsap.fromTo(input, { x: -8 }, { x: 8, duration: 0.6, ease: <span class="k">"shake"</span> });
+
+<span class="c">// ── 弹跳 ──────────────────────────────</span>
+CustomBounce.create(<span class="k">"myBounce"</span>, {
+  strength: <span class="k">0.6</span>,        <span class="c">// 弹性强度 0~1，越大弹得越久</span>
+  squash: <span class="k">2</span>,            <span class="c">// 挤压程度，0 表示不生成挤压曲线</span>
+  squashID: <span class="k">"myBounce-squash"</span>
+});
+
+<span class="c">// 位置用弹跳曲线，缩放用配套的挤压曲线，两条同时跑</span>
+gsap.to(ball,  { y: 300, duration: 1.6, ease: <span class="k">"myBounce"</span> });
+gsap.to(ball,  { scaleX: 1.4, scaleY: 0.6, duration: 1.6,
+                 ease: <span class="k">"myBounce-squash"</span>, transformOrigin: <span class="k">"center bottom"</span> });</pre>
+
+  <p class="note">
+    <b>抖动的幅度要克制。</b>校验失败抖 6~8 像素就够了，抖到 30 像素就从「提示」变成「故障」了。<br>
+    <b>squash 是 CustomBounce 的灵魂。</b>只有位置弹跳没有形变，看起来像个刚体在跳；
+    加上挤压拉伸，才有「弹力球」的质感——迪士尼动画十二原则里的 squash &amp; stretch 就是这个。<br>
+    两个插件都<b>依赖 CustomEase</b>，注册时要一起引入。它们现在都免费。
+  </p>
+
+<script src="../lib/gsap.min.js"></script>
+<script src="../lib/CustomEase.min.js"></script>
+<script src="../lib/CustomWiggle.min.js"></script>
+<script src="../lib/CustomBounce.min.js"></script>
+<script>
+  gsap.registerPlugin(CustomEase, CustomWiggle, CustomBounce);
+
+  // 把 ease 采样成一条曲线画出来，方便直观理解形状
+  function samplePath(easeName, yMin = -1, yMax = 1) {
+    const fn = gsap.parseEase(easeName);
+    const pts = [];
+    for (let i = 0; i <= 120; i++) {
+      const t = i / 120;
+      const v = fn(t);
+      // 把值域映射到 0~60 的绘图高度
+      const y = gsap.utils.mapRange(yMax, yMin, 2, 58, v);
+      pts.push(`${(t * 100).toFixed(2)},${y.toFixed(2)}`);
+    }
+    return 'M' + pts.join(' L');
+  }
+
+  // ---------- Wiggle ----------
+  const WIGGLES = [
+    { id: 'w-easeOut', wiggles: 6, type: 'easeOut', desc: '幅度逐渐衰减，最自然，默认选它' },
+    { id: 'w-easeInOut', wiggles: 6, type: 'easeInOut', desc: '两头小中间大，像被推了一把' },
+    { id: 'w-anticipate', wiggles: 6, type: 'anticipate', desc: '先反向蓄力再爆发，卡通感' },
+    { id: 'w-uniform', wiggles: 8, type: 'uniform', desc: '幅度始终不变，机械、紧张' },
+    { id: 'w-random', wiggles: 10, type: 'random', desc: '幅度随机，像真实的手抖' },
+    { id: 'w-few', wiggles: 3, type: 'easeOut', desc: '只抖 3 次，克制、适合正式界面' }
+  ];
+
+  const wGrid = document.getElementById('wiggleGrid');
+  WIGGLES.forEach(w => {
+    CustomWiggle.create(w.id, { wiggles: w.wiggles, type: w.type });
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.innerHTML = `
+      <div class="cname">wiggles: ${w.wiggles}, type: "${w.type}"</div>
+      <div class="cdesc">${w.desc}</div>
+      <svg class="curve" viewBox="0 0 100 60" preserveAspectRatio="none">
+        <line class="cframe" x1="0" y1="30" x2="100" y2="30"></line>
+        <path class="cpath" d="${samplePath(w.id)}" vector-effect="non-scaling-stroke"></path>
+      </svg>
+      <div class="stage"><div class="chip"></div></div>
+    `;
+    cell.onclick = () => {
+      const chip = cell.querySelector('.chip');
+      gsap.fromTo(chip, { x: -26 }, { x: 26, duration: 1, ease: w.id, clearProps: 'x' });
+      gsap.fromTo(chip, { rotate: -14 }, { rotate: 14, duration: 1, ease: w.id, clearProps: 'rotate' });
+    };
+    wGrid.appendChild(cell);
+  });
+
+  // ---------- Bounce ----------
+  const BOUNCES = [
+    { id: 'b-soft', strength: 0.3, squash: 0, desc: 'strength 0.3，弹一下就停，稳重' },
+    { id: 'b-mid', strength: 0.6, squash: 2, desc: 'strength 0.6 + squash 2，最常用' },
+    { id: 'b-hard', strength: 0.85, squash: 3, desc: 'strength 0.85，弹很久，皮球感' },
+    { id: 'b-nosquash', strength: 0.7, squash: 0, desc: '同样强度但不挤压，对比看看多「木」' }
+  ];
+
+  const bGrid = document.getElementById('bounceGrid');
+  BOUNCES.forEach(b => {
+    CustomBounce.create(b.id, { strength: b.strength, squash: b.squash, squashID: b.id + '-squash' });
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.innerHTML = `
+      <div class="cname">strength: ${b.strength}, squash: ${b.squash}</div>
+      <div class="cdesc">${b.desc}</div>
+      <svg class="curve" viewBox="0 0 100 60" preserveAspectRatio="none">
+        <line class="cframe" x1="0" y1="58" x2="100" y2="58"></line>
+        <path class="cpath" d="${samplePath(b.id, 0, 1)}" vector-effect="non-scaling-stroke"></path>
+      </svg>
+      <div class="stage"><div class="floor"></div><div class="ball"></div></div>
+    `;
+    cell.onclick = () => {
+      const ball = cell.querySelector('.ball');
+      gsap.fromTo(ball, { y: -34 }, { y: 0, duration: 1.5, ease: b.id });
+      // squash 为 0 时没有配套曲线，跳过挤压动画
+      if (b.squash) {
+        gsap.fromTo(ball,
+          { scaleX: 1, scaleY: 1 },
+          { scaleX: 1.35, scaleY: 0.7, duration: 1.5, ease: b.id + '-squash', transformOrigin: 'center bottom' }
+        );
+      }
+    };
+    bGrid.appendChild(cell);
+  });
+
+  // ---------- 真实场景 ----------
+  CustomWiggle.create('formShake', { wiggles: 7, type: 'easeOut' });
+  CustomWiggle.create('bellRing', { wiggles: 8, type: 'easeOut' });
+  CustomBounce.create('dropBounce', { strength: 0.68, squash: 2.5, squashID: 'dropBounce-squash' });
+
+  // 表单校验失败：幅度只有 8px，够明显又不烦人
+  document.getElementById('submit').onclick = () => {
+    const input = document.getElementById('pwd');
+    gsap.fromTo(input, { x: -8 }, { x: 8, duration: 0.55, ease: 'formShake', clearProps: 'x' });
+    gsap.fromTo(input, { borderColor: '#f85149' }, { borderColor: '#30363d', duration: 1.2 });
+  };
+
+  // 铃铛摇晃：绕顶部旋转才像真的挂在那儿
+  document.getElementById('bell').onclick = e => {
+    gsap.fromTo(e.target,
+      { rotate: -22 },
+      { rotate: 22, duration: 0.9, ease: 'bellRing', transformOrigin: 'top center', clearProps: 'rotate' }
+    );
+  };
+
+  // 掉落弹跳：位置和挤压两条曲线配合
+  document.getElementById('drop').onclick = () => {
+    const ball = document.getElementById('dropBall');
+    gsap.fromTo(ball, { y: -46 }, { y: 0, duration: 1.7, ease: 'dropBounce' });
+    gsap.fromTo(ball,
+      { scaleX: 1, scaleY: 1 },
+      { scaleX: 1.4, scaleY: 0.62, duration: 1.7, ease: 'dropBounce-squash', transformOrigin: 'center bottom' }
+    );
+  };
+</script>
+</body>
+</html>

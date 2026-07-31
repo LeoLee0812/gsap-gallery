@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Observer · 把所有输入统一成一套手势</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh; padding: 32px 24px 60px;
+    display: flex; flex-direction: column; align-items: center; gap: 20px;
+    overflow: hidden;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .sub { font-size: 13.5px; opacity: .55; text-align: center; max-width: 720px; line-height: 1.8; margin-top: -10px; }
+  .main { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; width: min(1060px, 100%); }
+  /* 手势捕获区 */
+  .pad {
+    flex: 1 1 420px; height: 340px; position: relative;
+    background: #161b22; border: 1px solid #30363d; border-radius: 16px;
+    overflow: hidden; cursor: grab; user-select: none;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .pad:active { cursor: grabbing; }
+  .pad::before {
+    content: ''; position: absolute; inset: 0;
+    background-image: linear-gradient(#21262d 1px, transparent 1px), linear-gradient(90deg, #21262d 1px, transparent 1px);
+    background-size: 34px 34px; opacity: .5;
+  }
+  .puck {
+    width: 92px; height: 92px; border-radius: 22px;
+    background: linear-gradient(135deg, #58e6a8, #3b82f6);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 30px; color: #0d1117; font-weight: 800; position: relative; z-index: 2;
+  }
+  .padhint {
+    position: absolute; bottom: 12px; left: 0; right: 0; text-align: center;
+    font-size: 12px; opacity: .4; z-index: 2;
+  }
+  /* 事件日志面板 */
+  .side { flex: 1 1 300px; display: flex; flex-direction: column; gap: 12px; }
+  .box {
+    background: #161b22; border: 1px solid #30363d; border-radius: 14px; padding: 16px 18px;
+  }
+  .btitle { font-size: 12px; opacity: .5; margin-bottom: 10px; }
+  .kv { font-size: 12.5px; font-family: ui-monospace, Menlo, monospace; line-height: 2; }
+  .kv b { color: #58e6a8; }
+  .kv .lab { opacity: .5; display: inline-block; width: 92px; }
+  #log {
+    height: 150px; overflow-y: auto; font-size: 12px;
+    font-family: ui-monospace, Menlo, monospace; line-height: 1.9;
+  }
+  #log div { opacity: .5; }
+  #log div:first-child { opacity: 1; color: #58e6a8; }
+  .dirs { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+  .dirs i {
+    width: 34px; height: 34px; border-radius: 8px; background: #0d1117;
+    border: 1px solid #30363d; display: flex; align-items: center; justify-content: center;
+    font-size: 15px; color: #6e7681; font-style: normal; transition: all .18s;
+  }
+  .dirs i.hit { background: #58e6a8; color: #0d1117; border-color: #58e6a8; }
+  pre {
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    padding: 16px 20px; font-size: 12.5px; line-height: 1.75;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #8b949e; width: min(1060px, 100%); overflow-x: auto;
+  }
+  pre .k { color: #58e6a8; }
+  pre .c { color: #6e7681; }
+  .note {
+    width: min(1060px, 100%); font-size: 13px; color: #8b949e; line-height: 1.9;
+    border-top: 1px solid #21262d; padding-top: 16px;
+  }
+  .note b { color: #58e6a8; }
+</style>
+</head>
+<body>
+  <h1>Observer · 统一手势输入</h1>
+  <p class="sub">
+    鼠标滚轮、触控板双指、手机滑动、鼠标拖拽、键盘方向键——原生要写五套监听，还要各自处理兼容和节流。
+    Observer 把它们<b>归一成同一套回调</b>，你只关心「往哪个方向、动了多少」。<br>
+    在左边区域里<b>滚滚轮、拖一拖、手机上滑一下</b>试试。
+  </p>
+
+  <div class="main">
+    <div class="pad" id="pad">
+      <div class="puck" id="puck">⬤</div>
+      <div class="padhint">滚轮 / 拖拽 / 触摸滑动 都试试</div>
+    </div>
+
+    <div class="side">
+      <div class="box">
+        <div class="btitle">实时数据</div>
+        <div class="kv">
+          <span class="lab">deltaX</span><b id="dx">0</b><br>
+          <span class="lab">deltaY</span><b id="dy">0</b><br>
+          <span class="lab">velocityX</span><b id="vx">0</b><br>
+          <span class="lab">velocityY</span><b id="vy">0</b><br>
+          <span class="lab">来源类型</span><b id="etype">-</b>
+        </div>
+      </div>
+      <div class="box">
+        <div class="btitle">方向回调（四个方向各自独立）</div>
+        <div class="dirs">
+          <i id="dUp">↑</i><i id="dDown">↓</i><i id="dLeft">←</i><i id="dRight">→</i>
+        </div>
+      </div>
+      <div class="box">
+        <div class="btitle">事件日志</div>
+        <div id="log"></div>
+      </div>
+    </div>
+  </div>
+
+  <pre>Observer.create({
+  target: <span class="k">"#pad"</span>,
+  <span class="c">// 想监听哪几类输入就写哪几类，全都归一到同一批回调</span>
+  type: <span class="k">"wheel,touch,pointer"</span>,
+
+  <span class="c">// 通用回调：任何输入变化都进这里</span>
+  onChange: (self) =&gt; {
+    <span class="c">// self.deltaX / deltaY 是本次位移，velocityX / velocityY 是速度</span>
+    gsap.to(<span class="k">"#puck"</span>, { x: <span class="k">"+="</span> + self.deltaX, y: <span class="k">"+="</span> + self.deltaY });
+  },
+
+  <span class="c">// 方向回调：只在「明确朝某个方向」时触发一次，做整屏翻页最合适</span>
+  onUp:    () =&gt; nextSlide(),
+  onDown:  () =&gt; prevSlide(),
+  onLeft:  () =&gt; {}, onRight: () =&gt; {},
+
+  <span class="c">// 两次方向触发之间的冷却时间，防止一次滑动被识别成好几次</span>
+  tolerance: 10,
+  <span class="c">// 阻止页面本身跟着滚动</span>
+  preventDefault: <span class="k">true</span>
+});</pre>
+
+  <p class="note">
+    <b>Observer 和 ScrollTrigger 的分工：</b>ScrollTrigger 关心「页面滚到哪了」，
+    Observer 关心「用户做了什么输入动作」——<b>后者不依赖页面真的有滚动条</b>。
+    所以全屏一页一屏的站、锁死滚动的引导流程、自定义手势轮播，都得用 Observer 而不是 ScrollTrigger。<br>
+    <b>onStop</b> 在输入停止后触发，用来做「松手后归位/吸附」；<b>tolerance</b> 调大能过滤掉触控板的细碎抖动。
+  </p>
+
+<script src="../lib/gsap.min.js"></script>
+<script src="../lib/Observer.min.js"></script>
+<script>
+  gsap.registerPlugin(Observer);
+
+  const puck = document.getElementById('puck');
+  const pad = document.getElementById('pad');
+  const logEl = document.getElementById('log');
+
+  // 保持方块不跑出捕获区
+  const bound = () => ({
+    x: pad.clientWidth / 2 - 60,
+    y: pad.clientHeight / 2 - 60
+  });
+
+  function log(msg) {
+    const d = document.createElement('div');
+    d.textContent = msg;
+    logEl.prepend(d);
+    while (logEl.children.length > 30) logEl.lastChild.remove();
+  }
+
+  // 方向指示灯闪一下
+  function flash(id) {
+    const el = document.getElementById(id);
+    el.classList.add('hit');
+    gsap.delayedCall(0.35, () => el.classList.remove('hit'));
+  }
+
+  Observer.create({
+    target: pad,
+    // 三类输入统一处理：滚轮、触摸、指针拖拽
+    type: 'wheel,touch,pointer',
+    preventDefault: true,
+    tolerance: 10,
+
+    onChange: self => {
+      const b = bound();
+      const cur = { x: gsap.getProperty(puck, 'x'), y: gsap.getProperty(puck, 'y') };
+      // clamp 防止拖出边界
+      gsap.to(puck, {
+        x: gsap.utils.clamp(-b.x, b.x, cur.x + self.deltaX),
+        y: gsap.utils.clamp(-b.y, b.y, cur.y + self.deltaY),
+        rotate: gsap.utils.clamp(-25, 25, self.velocityX * 0.02),
+        duration: 0.35, ease: 'power2.out', overwrite: 'auto'
+      });
+
+      document.getElementById('dx').textContent = self.deltaX.toFixed(1);
+      document.getElementById('dy').textContent = self.deltaY.toFixed(1);
+      document.getElementById('vx').textContent = self.velocityX.toFixed(0);
+      document.getElementById('vy').textContent = self.velocityY.toFixed(0);
+      document.getElementById('etype').textContent = self.event?.type || '-';
+    },
+
+    // 四个方向回调各自独立，带内置的方向判定和冷却
+    onUp: () => { flash('dUp'); log('onUp　（向上）'); },
+    onDown: () => { flash('dDown'); log('onDown　（向下）'); },
+    onLeft: () => { flash('dLeft'); log('onLeft　（向左）'); },
+    onRight: () => { flash('dRight'); log('onRight　（向右）'); },
+
+    // 输入停止后归位，制造「松手回中」的手感
+    onStop: () => {
+      log('onStop　→ 归位');
+      gsap.to(puck, { x: 0, y: 0, rotate: 0, duration: 0.9, ease: 'elastic.out(1, 0.55)' });
+    },
+    onStopDelay: 0.45,
+
+    onPress: () => log('onPress　（按下）'),
+    onRelease: () => log('onRelease　（松开）')
+  });
+
+  log('等待输入…');
+</script>
+</body>
+</html>

@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MotionPath 进阶 · 路径编辑与对齐</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh; padding: 34px 24px 60px;
+    display: flex; flex-direction: column; align-items: center; gap: 20px;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .sub { font-size: 13.5px; opacity: .55; text-align: center; max-width: 760px; line-height: 1.8; margin-top: -12px; }
+  .main { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; width: min(1080px, 100%); }
+  .stagewrap {
+    flex: 1 1 560px; background: #161b22; border: 1px solid #30363d;
+    border-radius: 16px; padding: 18px 20px;
+  }
+  .stage {
+    position: relative; height: 380px; border-radius: 12px; overflow: hidden;
+    background: #0d1117; border: 1px solid #21262d;
+  }
+  .stage svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .pathLine { stroke: #30363d; stroke-width: 2; fill: none; stroke-dasharray: 5 5; }
+  .pathLine.on { stroke: #3b82f6; stroke-dasharray: none; }
+  .rocket {
+    position: absolute; left: 0; top: 0; font-size: 30px; line-height: 1;
+    transform-origin: center; z-index: 3;
+  }
+  .follower {
+    position: absolute; left: 0; top: 0; width: 26px; height: 26px; border-radius: 8px;
+    margin: -13px 0 0 -13px; background: linear-gradient(135deg, #58e6a8, #3b82f6); z-index: 2;
+  }
+  /* 可拖动的路径锚点 */
+  .anchor {
+    position: absolute; width: 16px; height: 16px; border-radius: 50%;
+    margin: -8px 0 0 -8px; background: #58e6a8; cursor: grab;
+    box-shadow: 0 0 0 3px rgba(88,230,168,.2); z-index: 4; touch-action: none;
+  }
+  .anchor:active { cursor: grabbing; }
+  .side { flex: 1 1 300px; display: flex; flex-direction: column; gap: 12px; }
+  .box {
+    background: #161b22; border: 1px solid #30363d; border-radius: 14px; padding: 16px 18px;
+  }
+  .btitle { font-size: 12px; opacity: .5; margin-bottom: 10px; }
+  .opts { display: flex; gap: 6px; flex-wrap: wrap; }
+  .opts button {
+    background: #0d1117; color: #8b949e; border: 1px solid #30363d;
+    border-radius: 7px; padding: 7px 12px; font-size: 12px; cursor: pointer; font-family: inherit;
+  }
+  .opts button.on { background: #58e6a8; color: #0d1117; border-color: #58e6a8; }
+  .ctrl { display: flex; align-items: center; gap: 9px; margin-top: 9px; font-size: 11.5px; }
+  .ctrl label { width: 66px; opacity: .5; }
+  .ctrl input[type=range] { flex: 1; accent-color: #58e6a8; }
+  .ctrl span { width: 40px; text-align: right; color: #58e6a8; font-family: ui-monospace, Menlo, monospace; }
+  .play {
+    background: #58e6a8; color: #0d1117; border: 0; border-radius: 22px;
+    padding: 11px 26px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit;
+  }
+  pre {
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    padding: 16px 20px; font-size: 12.5px; line-height: 1.75;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #8b949e; width: min(1080px, 100%); overflow-x: auto;
+  }
+  pre .k { color: #58e6a8; }
+  pre .c { color: #6e7681; }
+  .note {
+    width: min(1080px, 100%); font-size: 13px; color: #8b949e; line-height: 1.9;
+    border-top: 1px solid #21262d; padding-top: 16px;
+  }
+  .note b { color: #58e6a8; }
+</style>
+</head>
+<body>
+  <h1>MotionPath 进阶</h1>
+  <p class="sub">
+    <b>拖动路径上的绿色锚点改变轨迹</b>，动画会立刻跟着变。
+    重点看 <code>autoRotate</code> ——它让元素自动朝向前进方向，是「沿路径运动」看起来自然的关键。
+  </p>
+
+  <div class="main">
+    <div class="stagewrap">
+      <div class="stage" id="stage">
+        <svg id="svg" viewBox="0 0 560 380" preserveAspectRatio="none">
+          <path class="pathLine on" id="path"></path>
+        </svg>
+        <div class="rocket" id="rocket">🚀</div>
+        <div class="follower" id="follower"></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:12px;align-items:center;flex-wrap:wrap">
+        <button class="play" id="play">▶ 播放</button>
+        <button class="play" style="background:#161b22;color:#58e6a8;border:1px solid #30363d" id="loop">↻ 循环</button>
+        <span style="font-size:12px;opacity:.45">拖动绿点改路径</span>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="box">
+        <div class="btitle">autoRotate（自动朝向前进方向）</div>
+        <div class="opts" id="rotOpts">
+          <button class="on" data-r="true">true</button>
+          <button data-r="false">false</button>
+          <button data-r="90">偏移 90°</button>
+          <button data-r="-45">偏移 -45°</button>
+        </div>
+      </div>
+
+      <div class="box">
+        <div class="btitle">路径预设</div>
+        <div class="opts" id="presetOpts">
+          <button class="on" data-p="wave">波浪</button>
+          <button data-p="loop">环形</button>
+          <button data-p="zigzag">折线</button>
+          <button data-p="s">S 形</button>
+        </div>
+      </div>
+
+      <div class="box">
+        <div class="btitle">运动区间（start / end，0~1）</div>
+        <div class="ctrl"><label>start</label><input type="range" id="stIn" min="0" max="1" step="0.05" value="0"><span id="stV">0</span></div>
+        <div class="ctrl"><label>end</label><input type="range" id="edIn" min="0" max="1" step="0.05" value="1"><span id="edV">1</span></div>
+        <div class="ctrl"><label>时长</label><input type="range" id="durIn" min="1" max="8" step="0.5" value="4"><span id="durV">4s</span></div>
+      </div>
+
+      <div class="box">
+        <div class="btitle">曲率 curviness（折线预设下最明显）</div>
+        <div class="ctrl"><label>curviness</label><input type="range" id="curvIn" min="0" max="2" step="0.1" value="1"><span id="curvV">1</span></div>
+      </div>
+
+      <div class="box">
+        <div class="btitle">alignOrigin（元素的哪个点贴着路径）</div>
+        <div class="opts" id="alignOpts">
+          <button class="on" data-a="0.5,0.5">中心</button>
+          <button data-a="0,0.5">左中</button>
+          <button data-a="0.5,1">底部中</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <pre>gsap.registerPlugin(MotionPathPlugin);
+
+<span class="c">// 写法一：跟随一条真实的 SVG path</span>
+gsap.to(<span class="k">"#rocket"</span>, {
+  duration: 4,
+  ease: <span class="k">"none"</span>,
+  motionPath: {
+    path: <span class="k">"#path"</span>,         <span class="c">// 选择器、path 元素，或坐标数组</span>
+    align: <span class="k">"#path"</span>,        <span class="c">// 让元素坐标系对齐到这条 path 上</span>
+    alignOrigin: [0.5, 0.5],  <span class="c">// 元素的哪个点贴着路径（中心）</span>
+    autoRotate: <span class="k">true</span>,       <span class="c">// 自动朝向前进方向 —— 关键</span>
+    start: 0, end: 1          <span class="c">// 只跑路径的某一段</span>
+  }
+});
+
+<span class="c">// 写法二：直接给一串坐标点，GSAP 自动拟合成平滑曲线</span>
+gsap.to(box, {
+  duration: 3,
+  motionPath: {
+    path: [{ x: 0, y: 0 }, { x: 150, y: -80 }, { x: 300, y: 40 }],
+    curviness: 1.5,     <span class="c">// 0 = 直角折线，越大越圆润</span>
+    autoRotate: <span class="k">true</span>
+  }
+});
+
+<span class="c">// 开发时用 MotionPathHelper 可以在页面上直接拖控制点调路径：</span>
+<span class="c">// MotionPathHelper.create("#rocket");  // 调完把生成的 path 复制走，上线前删掉</span></pre>
+
+  <p class="note">
+    <b>autoRotate 是这个插件的灵魂。</b>关掉它，火箭会保持水平地「平移」过整条曲线，非常假；
+    打开它，元素会像真的在飞。<br>
+    <b>autoRotate 还能传数字</b>做角度偏移——比如你的图标本身是朝上画的（而不是朝右），
+    就传 <code>90</code> 或 <code>-90</code> 把它掰正。这是最常见的踩坑点。<br>
+    <b>alignOrigin 决定「元素的哪个点贴着路径」</b>：默认是元素左上角，几乎总是要改成 <code>[0.5, 0.5]</code>（中心）。
+    做「小车沿路行驶」时则该用 <code>[0.5, 1]</code>（底部中心），让轮子贴着路。<br>
+    <b>MotionPathHelper</b> 是配套的开发工具，在页面上直接拖出路径再把结果复制到代码里，比手写 SVG path 快得多。
+  </p>
+
+<script src="../lib/gsap.min.js"></script>
+<script src="../lib/MotionPathPlugin.min.js"></script>
+<script>
+  gsap.registerPlugin(MotionPathPlugin);
+
+  const stage = document.getElementById('stage');
+  const pathEl = document.getElementById('path');
+
+  // 路径预设：一组锚点，用 MotionPathPlugin 的工具拟合成平滑曲线
+  const PRESETS = {
+    wave:   [{x:40,y:300},{x:160,y:110},{x:290,y:290},{x:420,y:90},{x:520,y:230}],
+    loop:   [{x:280,y:60},{x:470,y:190},{x:280,y:320},{x:90,y:190},{x:280,y:60}],
+    zigzag: [{x:50,y:60},{x:200,y:320},{x:330,y:70},{x:460,y:320},{x:530,y:120}],
+    s:      [{x:60,y:80},{x:420,y:120},{x:140,y:260},{x:500,y:310}]
+  };
+
+  let points = PRESETS.wave.map(p => ({ ...p }));
+  let curviness = 1;
+  let autoRotate = true;
+  let alignOrigin = [0.5, 0.5];
+  let looping = false;
+  let tween = null;
+
+  // 用 rawPathToString + 三次曲线拟合，把锚点数组变成一条真实的 SVG path
+  function buildPath() {
+    const raw = MotionPathPlugin.arrayToRawPath(points, { curviness });
+    pathEl.setAttribute('d', MotionPathPlugin.rawPathToString(raw));
+  }
+
+  // 锚点可拖拽（原生 pointer 事件，避免额外依赖 Draggable）
+  function renderAnchors() {
+    stage.querySelectorAll('.anchor').forEach(a => a.remove());
+    const sw = stage.clientWidth, sh = stage.clientHeight;
+    points.forEach((p, i) => {
+      const a = document.createElement('div');
+      a.className = 'anchor';
+      // viewBox 是 560×380，换算成实际像素位置
+      a.style.left = (p.x / 560 * sw) + 'px';
+      a.style.top = (p.y / 380 * sh) + 'px';
+      stage.appendChild(a);
+
+      let dragging = false;
+      a.addEventListener('pointerdown', e => { dragging = true; a.setPointerCapture(e.pointerId); });
+      a.addEventListener('pointermove', e => {
+        if (!dragging) return;
+        const r = stage.getBoundingClientRect();
+        const px = gsap.utils.clamp(0, r.width, e.clientX - r.left);
+        const py = gsap.utils.clamp(0, r.height, e.clientY - r.top);
+        a.style.left = px + 'px';
+        a.style.top = py + 'px';
+        points[i].x = px / r.width * 560;
+        points[i].y = py / r.height * 380;
+        buildPath();
+        play();
+      });
+      a.addEventListener('pointerup', () => dragging = false);
+    });
+  }
+
+  function play() {
+    if (tween) tween.kill();
+    const start = +document.getElementById('stIn').value;
+    const end = +document.getElementById('edIn').value;
+    const dur = +document.getElementById('durIn').value;
+
+    const cfg = {
+      duration: dur,
+      ease: 'none',
+      repeat: looping ? -1 : 0,
+      motionPath: {
+        path: '#path',
+        align: '#path',
+        alignOrigin,
+        autoRotate,
+        start,
+        end
+      }
+    };
+    // 火箭和方块跑同一条路径，方块滞后一点形成跟随感
+    tween = gsap.timeline({ repeat: looping ? -1 : 0 })
+      .to('#rocket', { ...cfg, repeat: 0 }, 0)
+      .to('#follower', { ...cfg, repeat: 0, duration: dur }, 0.25);
+  }
+
+  // ---- 控件绑定 ----
+  document.getElementById('rotOpts').onclick = e => {
+    const b = e.target.closest('button'); if (!b) return;
+    document.querySelectorAll('#rotOpts button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    const v = b.dataset.r;
+    autoRotate = v === 'true' ? true : v === 'false' ? false : +v;
+    play();
+  };
+
+  document.getElementById('presetOpts').onclick = e => {
+    const b = e.target.closest('button'); if (!b) return;
+    document.querySelectorAll('#presetOpts button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    points = PRESETS[b.dataset.p].map(p => ({ ...p }));
+    buildPath(); renderAnchors(); play();
+  };
+
+  document.getElementById('alignOpts').onclick = e => {
+    const b = e.target.closest('button'); if (!b) return;
+    document.querySelectorAll('#alignOpts button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    alignOrigin = b.dataset.a.split(',').map(Number);
+    play();
+  };
+
+  ['stIn', 'edIn', 'durIn'].forEach(id => {
+    const inp = document.getElementById(id);
+    inp.oninput = () => {
+      document.getElementById(id.replace('In', 'V')).textContent =
+        id === 'durIn' ? inp.value + 's' : inp.value;
+      play();
+    };
+  });
+
+  const curvIn = document.getElementById('curvIn');
+  curvIn.oninput = () => {
+    curviness = +curvIn.value;
+    document.getElementById('curvV').textContent = curviness.toFixed(1);
+    buildPath(); play();
+  };
+
+  document.getElementById('play').onclick = play;
+  document.getElementById('loop').onclick = e => {
+    looping = !looping;
+    e.target.textContent = looping ? '■ 停止循环' : '↻ 循环';
+    play();
+  };
+
+  buildPath();
+  renderAnchors();
+  play();
+  window.addEventListener('resize', () => { renderAnchors(); play(); });
+</script>
+</body>
+</html>

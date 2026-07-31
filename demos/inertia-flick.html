@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InertiaPlugin · 松手后的惯性与吸附</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh; padding: 34px 24px 60px;
+    display: flex; flex-direction: column; align-items: center; gap: 20px;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .sub { font-size: 13.5px; opacity: .55; text-align: center; max-width: 720px; line-height: 1.8; margin-top: -10px; }
+  .row { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; width: min(1060px, 100%); }
+  .panel {
+    flex: 1 1 320px; background: #161b22; border: 1px solid #30363d;
+    border-radius: 16px; padding: 18px 20px;
+  }
+  .ptitle { font-size: 14px; font-weight: 700; color: #58e6a8; margin-bottom: 4px; }
+  .pdesc { font-size: 12px; opacity: .5; line-height: 1.65; margin-bottom: 14px; min-height: 46px; }
+  .field {
+    height: 200px; position: relative; border-radius: 12px;
+    background: #0d1117; border: 1px solid #21262d; overflow: hidden;
+  }
+  /* 吸附网格的参考线 */
+  .field.grid::before {
+    content: ''; position: absolute; inset: 0;
+    background-image: linear-gradient(#21262d 1px, transparent 1px), linear-gradient(90deg, #21262d 1px, transparent 1px);
+    background-size: 50px 50px;
+  }
+  .puck {
+    position: absolute; left: 50%; top: 50%; margin: -30px 0 0 -30px;
+    width: 60px; height: 60px; border-radius: 16px;
+    background: linear-gradient(135deg, #58e6a8, #3b82f6);
+    cursor: grab; touch-action: none;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; color: #0d1117; font-weight: 700;
+  }
+  .puck:active { cursor: grabbing; }
+  .readout {
+    margin-top: 10px; font-size: 11.5px; font-family: ui-monospace, Menlo, monospace;
+    color: #6e7681; min-height: 32px; line-height: 1.7;
+  }
+  .readout b { color: #58e6a8; }
+  /* 惯性列表 */
+  .listwrap {
+    width: min(1060px, 100%); background: #161b22; border: 1px solid #30363d;
+    border-radius: 16px; padding: 18px 20px;
+  }
+  .viewport {
+    height: 130px; overflow: hidden; position: relative;
+    border-radius: 12px; background: #0d1117; border: 1px solid #21262d;
+  }
+  .strip {
+    display: flex; gap: 12px; padding: 16px; position: absolute; left: 0; top: 0;
+    cursor: grab; touch-action: none;
+  }
+  .strip:active { cursor: grabbing; }
+  .item {
+    width: 120px; height: 98px; border-radius: 12px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px; font-weight: 800; color: #0d1117;
+  }
+  pre {
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    padding: 16px 20px; font-size: 12.5px; line-height: 1.75;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #8b949e; width: min(1060px, 100%); overflow-x: auto;
+  }
+  pre .k { color: #58e6a8; }
+  pre .c { color: #6e7681; }
+  .note {
+    width: min(1060px, 100%); font-size: 13px; color: #8b949e; line-height: 1.9;
+    border-top: 1px solid #21262d; padding-top: 16px;
+  }
+  .note b { color: #58e6a8; }
+</style>
+</head>
+<body>
+  <h1>InertiaPlugin · 松手之后的那一段</h1>
+  <p class="sub">
+    拖拽本身只解决「跟手」，真正决定手感的是<b>松手之后</b>：是戛然而止，还是带着速度滑一段再自然停下。
+    Inertia 会读取你松手瞬间的速度，算出一条符合物理直觉的减速轨迹——这就是原生 App 滑动列表的手感来源。
+  </p>
+
+  <div class="row">
+    <div class="panel">
+      <div class="ptitle">① 纯惯性滑行</div>
+      <div class="pdesc">松手后按当时速度继续滑，逐渐减速停下。甩得越猛滑得越远，完全由速度决定。</div>
+      <div class="field"><div class="puck" id="p1">甩我</div></div>
+      <div class="readout" id="r1">拖起来甩一下</div>
+    </div>
+
+    <div class="panel">
+      <div class="ptitle">② 惯性 + 网格吸附</div>
+      <div class="pdesc">滑行结束前，会把落点吸到最近的 50px 网格上——既保留了惯性，又保证最终位置整齐。</div>
+      <div class="field grid"><div class="puck" id="p2">吸附</div></div>
+      <div class="readout" id="r2">松手后会自动对齐网格</div>
+    </div>
+
+    <div class="panel">
+      <div class="ptitle">③ 惯性 + 边界回弹</div>
+      <div class="pdesc">超出边界时会被拉回来，带一点橡皮筋回弹。iOS 列表滑到头的那种感觉。</div>
+      <div class="field"><div class="puck" id="p3">边界</div></div>
+      <div class="readout" id="r3">往角落里猛甩试试</div>
+    </div>
+  </div>
+
+  <div class="listwrap">
+    <div class="ptitle">④ 实战：惯性横向列表（拖动 + 甩动）</div>
+    <div class="pdesc" style="min-height:auto">和手机上的横向卡片列表一个手感：拖到哪、甩多远，都由速度和边界共同决定。</div>
+    <div class="viewport" id="vp"><div class="strip" id="strip"></div></div>
+  </div>
+
+  <pre>gsap.registerPlugin(Draggable, InertiaPlugin);
+
+Draggable.create(<span class="k">"#puck"</span>, {
+  type: <span class="k">"x,y"</span>,
+  bounds: <span class="k">".field"</span>,
+
+  <span class="c">// 只需这一个开关，松手后的惯性滑行就有了</span>
+  <span class="k">inertia</span>: <span class="k">true</span>,
+
+  <span class="c">// snap 定义「滑行的落点」怎么修正，而不是拖动过程中就吸附</span>
+  snap: {
+    x: value =&gt; gsap.utils.snap(50, value),
+    y: value =&gt; gsap.utils.snap(50, value)
+  },
+
+  <span class="c">// 甩出边界时的回弹力度；0.6 比较接近 iOS 的手感</span>
+  edgeResistance: 0.65,
+
+  onThrowUpdate: <span class="k">function</span>() { <span class="c">/* 惯性滑行的每一帧 */</span> },
+  onThrowComplete: <span class="k">function</span>() { <span class="c">/* 完全停下 */</span> }
+});
+
+<span class="c">// 也能脱离拖拽，直接对任意属性做惯性补间：</span>
+gsap.to(box, { inertia: { x: { velocity: 800, <span class="k">end</span>: 400 } } });</pre>
+
+  <p class="note">
+    <b>inertia: true 和 snap 的关系常被搞混：</b>snap 修正的是<b>惯性滑行的最终落点</b>，
+    不是拖动过程中的实时位置——所以拖的时候依然是自由的，只在松手后才「归位」。这正是好手感的关键。<br>
+    <b>edgeResistance</b>（0~1）控制拖出边界时的阻力：0 = 毫无阻力随便拖出去，1 = 硬边界完全拖不动，
+    0.6 左右最接近原生 App。<br>
+    <b>InertiaPlugin 以前是 Club GSAP 付费插件，现在免费</b>，可以放心用于商业项目。
+  </p>
+
+<script src="../lib/gsap.min.js"></script>
+<script src="../lib/Draggable.min.js"></script>
+<script src="../lib/InertiaPlugin.min.js"></script>
+<script>
+  gsap.registerPlugin(Draggable, InertiaPlugin);
+
+  // ① 纯惯性：只开 inertia，不做任何落点修正
+  Draggable.create('#p1', {
+    type: 'x,y',
+    bounds: '#p1',
+    inertia: true,
+    onDragStart() { document.getElementById('r1').textContent = '拖拽中…'; },
+    onThrowUpdate() {
+      document.getElementById('r1').innerHTML =
+        `惯性滑行中　x: <b>${this.x.toFixed(0)}</b>　y: <b>${this.y.toFixed(0)}</b>`;
+    },
+    onThrowComplete() {
+      document.getElementById('r1').innerHTML =
+        `已停下　最终 x: <b>${this.x.toFixed(0)}</b>　y: <b>${this.y.toFixed(0)}</b>`;
+    }
+  });
+  // bounds 用父容器，避免方块跑出可视区
+  Draggable.get('#p1').applyBounds(document.querySelector('#p1').parentElement);
+
+  // ② 惯性 + 吸附：snap 只影响滑行的落点
+  Draggable.create('#p2', {
+    type: 'x,y',
+    bounds: document.querySelector('#p2').parentElement,
+    inertia: true,
+    snap: {
+      x: v => gsap.utils.snap(50, v),
+      y: v => gsap.utils.snap(50, v)
+    },
+    onDragStart() { document.getElementById('r2').textContent = '拖拽中（此时不吸附，完全自由）'; },
+    onThrowComplete() {
+      document.getElementById('r2').innerHTML =
+        `已吸附到网格　x: <b>${this.x.toFixed(0)}</b>　y: <b>${this.y.toFixed(0)}</b>`;
+    }
+  });
+
+  // ③ 边界回弹：edgeResistance 决定拖出边界时有多「肉」
+  Draggable.create('#p3', {
+    type: 'x,y',
+    bounds: document.querySelector('#p3').parentElement,
+    inertia: true,
+    edgeResistance: 0.65,
+    onThrowUpdate() {
+      document.getElementById('r3').innerHTML =
+        `edgeResistance: <b>0.65</b>　超出边界会被拉回`;
+    },
+    onThrowComplete() {
+      document.getElementById('r3').innerHTML =
+        `贴边停下　x: <b>${this.x.toFixed(0)}</b>　y: <b>${this.y.toFixed(0)}</b>`;
+    }
+  });
+
+  // ④ 惯性横向列表
+  const strip = document.getElementById('strip');
+  const COLORS = ['#58e6a8', '#3b82f6', '#f0883e', '#a371f7', '#f85149', '#2ea043', '#db61a2', '#e3b341'];
+  for (let i = 1; i <= 14; i++) {
+    const it = document.createElement('div');
+    it.className = 'item';
+    it.style.background = COLORS[i % COLORS.length];
+    it.textContent = i;
+    strip.appendChild(it);
+  }
+
+  // 拖拽范围 = 视口宽度减去内容总宽度（负值表示可以往左拖多远）
+  function stripBounds() {
+    const vp = document.getElementById('vp');
+    return { minX: Math.min(0, vp.clientWidth - strip.scrollWidth), maxX: 0 };
+  }
+  const stripDrag = Draggable.create(strip, {
+    type: 'x',
+    inertia: true,
+    bounds: stripBounds(),
+    edgeResistance: 0.8,
+    // 落点吸附到卡片宽度的整数倍（120 卡片 + 12 间隙）
+    snap: { x: v => gsap.utils.snap(132, v) }
+  })[0];
+  window.addEventListener('resize', () => stripDrag.applyBounds(stripBounds()));
+</script>
+</body>
+</html>

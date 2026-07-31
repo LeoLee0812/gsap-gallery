@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GSDevTools · 动画调试面板</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh; padding: 34px 24px 130px;
+    display: flex; flex-direction: column; align-items: center; gap: 20px;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .sub { font-size: 13.5px; opacity: .55; text-align: center; max-width: 740px; line-height: 1.8; margin-top: -12px; }
+  .stage {
+    width: min(880px, 100%); height: 340px; position: relative;
+    background: #161b22; border: 1px solid #30363d; border-radius: 16px; overflow: hidden;
+  }
+  .stage::before {
+    content: ''; position: absolute; inset: 0;
+    background-image: linear-gradient(#21262d 1px, transparent 1px), linear-gradient(90deg, #21262d 1px, transparent 1px);
+    background-size: 44px 44px; opacity: .4;
+  }
+  .logo {
+    position: absolute; left: 50%; top: 62px; margin-left: -46px;
+    width: 92px; height: 92px; border-radius: 24px;
+    background: linear-gradient(135deg, #58e6a8, #3b82f6);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 34px; font-weight: 900; color: #0d1117;
+  }
+  .title {
+    position: absolute; left: 0; right: 0; top: 176px; text-align: center;
+    font-size: 26px; font-weight: 800;
+  }
+  .desc {
+    position: absolute; left: 0; right: 0; top: 214px; text-align: center;
+    font-size: 14px; opacity: .55;
+  }
+  .chips {
+    position: absolute; left: 0; right: 0; bottom: 40px;
+    display: flex; gap: 10px; justify-content: center;
+  }
+  .chip {
+    padding: 8px 16px; border-radius: 20px; font-size: 13px;
+    background: #0d1117; border: 1px solid #30363d; color: #58e6a8;
+  }
+  .hint {
+    width: min(880px, 100%); background: #161b22; border: 1px solid #30363d;
+    border-radius: 14px; padding: 18px 22px; font-size: 13px; line-height: 1.9; color: #8b949e;
+  }
+  .hint b { color: #58e6a8; }
+  .hint ul { margin: 10px 0 0 20px; }
+  .hint li { margin-bottom: 6px; }
+  pre {
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    padding: 16px 20px; font-size: 12.5px; line-height: 1.75;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #8b949e; width: min(880px, 100%); overflow-x: auto;
+  }
+  pre .k { color: #58e6a8; }
+  pre .c { color: #6e7681; }
+  .warn {
+    width: min(880px, 100%); font-size: 13px; line-height: 1.9;
+    background: rgba(240,136,62,.08); border: 1px solid rgba(240,136,62,.3);
+    border-radius: 12px; padding: 14px 18px; color: #f0883e;
+  }
+  .warn b { color: #f0883e; }
+  /* GSDevTools 面板会固定在页面底部，给它留出空间 */
+</style>
+</head>
+<body>
+  <h1>GSDevTools · 动画调试面板</h1>
+  <p class="sub">
+    调动画最烦的是「每改一个参数就得刷新页面重看一遍，还只能看那 0.3 秒的关键部分」。
+    GSDevTools 在页面底部装了一个<b>带时间轴刻度的播放器</b>：能拖进度、能变速、能循环某一段、能按标签跳转。<br>
+    <b>看页面最下方那条控制条。</b>
+  </p>
+
+  <div class="stage">
+    <div class="logo" id="logo">G</div>
+    <div class="title" id="title">GSAP Gallery</div>
+    <div class="desc" id="desc">一条包含 4 个标签段落的完整入场动画</div>
+    <div class="chips">
+      <div class="chip">timeline</div>
+      <div class="chip">stagger</div>
+      <div class="chip">labels</div>
+    </div>
+  </div>
+
+  <div class="hint">
+    <b>底部这条控制条能做什么：</b>
+    <ul>
+      <li><b>拖动进度条</b>——精确停在任意一帧，看清那一刻元素到底在哪</li>
+      <li><b>时间轴上的标签点</b>——直接跳到 <code>logo</code> / <code>title</code> / <code>desc</code> / <code>chips</code> 任意一段</li>
+      <li><b>in / out 标记</b>——框定一个区间循环播放，反复打磨某 0.5 秒</li>
+      <li><b>速度下拉</b>——0.1 倍速慢放，看清快动作里到底发生了什么</li>
+      <li><b>左侧下拉框</b>——页面里有多条动画时，切换调试对象</li>
+    </ul>
+  </div>
+
+  <pre>gsap.registerPlugin(GSDevTools);
+
+<span class="c">// 给要调试的动画起个 id，面板的下拉框里就能选到它</span>
+<span class="k">const</span> tl = gsap.timeline({ id: <span class="k">"intro"</span> });
+tl.addLabel(<span class="k">"logo"</span>)
+  .from(<span class="k">"#logo"</span>, { scale: 0, rotate: -180, duration: 0.8, ease: <span class="k">"back.out(1.7)"</span> })
+  .addLabel(<span class="k">"title"</span>)
+  .from(<span class="k">"#title"</span>, { y: 30, opacity: 0, duration: 0.6 })
+  <span class="c">// …</span>
+
+<span class="c">// 一行创建面板</span>
+GSDevTools.create({
+  animation: <span class="k">"intro"</span>,   <span class="c">// 传 id 或动画实例；不传则调试全局时间轴</span>
+  globalSync: <span class="k">true</span>,     <span class="c">// 让面板与全局时间轴同步</span>
+  persist: <span class="k">true</span>         <span class="c">// 刷新页面后保留上次的进度和速度设置</span>
+});</pre>
+
+  <div class="warn">
+    <b>⚠️ 上线前一定要删掉 GSDevTools。</b>
+    它是开发期工具，会往页面注入 DOM 和监听器，也会拖慢性能。
+    常见做法是用环境变量包一层：<code>if (import.meta.env.DEV) GSDevTools.create()</code>，
+    这样生产构建时会被自动摇树掉。
+  </div>
+
+<script src="../lib/gsap.min.js"></script>
+<script src="../lib/GSDevTools.min.js"></script>
+<script>
+  gsap.registerPlugin(GSDevTools);
+
+  // 一条带标签的完整入场动画，标签会显示在调试面板的时间轴刻度上
+  const tl = gsap.timeline({ id: 'intro' });
+
+  tl.addLabel('logo')
+    .from('#logo', { scale: 0, rotate: -180, duration: 0.8, ease: 'back.out(1.7)' })
+    .to('#logo', { y: -8, duration: 0.4, yoyo: true, repeat: 1, ease: 'sine.inOut' })
+
+    .addLabel('title')
+    .from('#title', { y: 30, opacity: 0, duration: 0.6, ease: 'power3.out' })
+
+    .addLabel('desc')
+    .from('#desc', { y: 20, opacity: 0, duration: 0.5, ease: 'power2.out' }, '-=0.25')
+
+    .addLabel('chips')
+    .from('.chip', { y: 24, opacity: 0, scale: 0.85, duration: 0.5, stagger: 0.12, ease: 'back.out(1.6)' })
+    .to('.chip', { borderColor: '#58e6a8', duration: 0.3, stagger: 0.08 }, '-=0.2');
+
+  // 创建调试面板。animation 传 id 字符串即可
+  GSDevTools.create({
+    animation: 'intro',
+    globalSync: true,
+    persist: false
+  });
+</script>
+</body>
+</html>

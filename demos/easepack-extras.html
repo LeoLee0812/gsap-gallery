@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EasePack · Rough / SlowMo / Stepped / ExpoScale</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh; padding: 34px 24px 60px;
+    display: flex; flex-direction: column; align-items: center; gap: 20px;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .sub { font-size: 13.5px; opacity: .55; text-align: center; max-width: 740px; line-height: 1.8; margin-top: -12px; }
+  .sect {
+    width: min(1060px, 100%); background: #161b22;
+    border: 1px solid #30363d; border-radius: 16px; padding: 20px 24px;
+  }
+  .stitle { font-size: 16px; font-weight: 700; color: #58e6a8; margin-bottom: 4px; }
+  .stitle small { font-weight: 400; opacity: .5; font-size: 12px; margin-left: 8px; }
+  .sdesc { font-size: 12.5px; opacity: .55; line-height: 1.7; margin-bottom: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+  .cell {
+    background: #0d1117; border: 1px solid #21262d; border-radius: 12px;
+    padding: 13px 15px; cursor: pointer; transition: border-color .18s;
+  }
+  .cell:hover { border-color: #58e6a8; }
+  .cname { font-size: 11.5px; color: #58e6a8; font-family: ui-monospace, Menlo, monospace; margin-bottom: 7px; }
+  .cdesc { font-size: 11px; opacity: .45; line-height: 1.55; margin-bottom: 8px; min-height: 30px; }
+  svg.curve { width: 100%; height: 58px; display: block; }
+  .cframe { stroke: #21262d; stroke-width: 1; fill: none; }
+  .cpath { stroke: #3b82f6; stroke-width: 2; fill: none; }
+  .track {
+    height: 40px; margin-top: 8px; position: relative;
+    background: #0d1117; border: 1px solid #21262d; border-radius: 9px; overflow: hidden;
+  }
+  .runner {
+    position: absolute; left: 5px; top: 5px; width: 28px; height: 28px;
+    border-radius: 8px; background: linear-gradient(135deg, #58e6a8, #3b82f6);
+  }
+  /* SlowMo 的实战：文字在中段慢下来，方便阅读 */
+  .slowmoStage {
+    height: 90px; position: relative; overflow: hidden;
+    background: #0d1117; border: 1px solid #21262d; border-radius: 12px;
+    display: flex; align-items: center;
+  }
+  .slowmoText {
+    position: absolute; white-space: nowrap; font-size: 22px; font-weight: 700;
+    background: linear-gradient(135deg, #58e6a8, #3b82f6);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  /* ExpoScale 的实战：缩放时保持视觉速度均匀 */
+  .zoomRow { display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; }
+  .zoomBox {
+    width: 200px; height: 150px; overflow: hidden; border-radius: 12px;
+    background: #0d1117; border: 1px solid #21262d; position: relative;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .zoomInner {
+    width: 60px; height: 60px; border-radius: 10px;
+    background: linear-gradient(135deg, #58e6a8, #3b82f6);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; color: #0d1117; font-weight: 700;
+  }
+  .zlabel { font-size: 11.5px; opacity: .5; text-align: center; margin-top: 8px; }
+  .btn {
+    background: #58e6a8; color: #0d1117; border: 0; border-radius: 20px;
+    padding: 9px 22px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+  }
+  pre {
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    padding: 16px 20px; font-size: 12.5px; line-height: 1.75;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #8b949e; width: min(1060px, 100%); overflow-x: auto;
+  }
+  pre .k { color: #58e6a8; }
+  pre .c { color: #6e7681; }
+  .note {
+    width: min(1060px, 100%); font-size: 13px; color: #8b949e; line-height: 1.9;
+    border-top: 1px solid #21262d; padding-top: 16px;
+  }
+  .note b { color: #58e6a8; }
+</style>
+</head>
+<body>
+  <h1>EasePack · 四个特种缓动</h1>
+  <p class="sub">
+    除了 power / back / elastic 这些常规 ease，GSAP 还带了四个解决特定问题的特殊 ease。
+    平时用不上，但一旦遇到对应场景，它们能省掉几十行代码。
+  </p>
+
+  <div class="sect">
+    <div class="stitle">RoughEase <small>把平滑的曲线打碎成锯齿</small></div>
+    <div class="sdesc">
+      做<b>故障、抖动、老电视信号、打字机的不稳定感</b>。它在原有 ease 基础上加随机噪点，
+      <code>points</code> 控制噪点密度，<code>strength</code> 控制偏离幅度。点格子播放。
+    </div>
+    <div class="grid" id="roughGrid"></div>
+  </div>
+
+  <div class="sect">
+    <div class="stitle">SlowMo <small>两头快、中间慢的「子弹时间」</small></div>
+    <div class="sdesc">
+      文字滚动播报的经典解法：<b>快速进场 → 中段慢到能看清 → 快速离场</b>。
+      用普通 ease 做不到「中间停留」这件事，SlowMo 是专门为它设计的。
+    </div>
+    <div class="grid" id="slowmoGrid"></div>
+    <div class="slowmoStage" style="margin-top:14px">
+      <div class="slowmoText" id="smText">这段文字会在中间慢下来，让你有时间读完</div>
+    </div>
+    <button class="btn" style="margin-top:12px" id="smPlay">▶ 播放文字滚动</button>
+  </div>
+
+  <div class="sect">
+    <div class="stitle">SteppedEase <small>分段跳变，没有中间态</small></div>
+    <div class="sdesc">
+      刻意<b>丢帧</b>的效果：秒针一格一格跳、像素风角色行走、逐帧动画。
+      注意它和 <code>steps()</code> 是同一套东西，写法上 <code>steps(n)</code> 更简洁。
+    </div>
+    <div class="grid" id="stepGrid"></div>
+  </div>
+
+  <div class="sect">
+    <div class="stitle">ExpoScaleEase <small>缩放时保持视觉速度均匀</small></div>
+    <div class="sdesc">
+      这是个很少人知道但很重要的问题：<b>从 scale 1 放大到 5，用线性 ease 看起来是「先慢后快」的</b>——
+      因为人眼感知的是相对变化率。ExpoScale 修正了这个错觉。左右对比一下就明白了。
+    </div>
+    <div class="zoomRow">
+      <div>
+        <div class="zoomBox"><div class="zoomInner" id="z1">线性</div></div>
+        <div class="zlabel">ease: "none"　<br>看起来先慢后猛</div>
+      </div>
+      <div>
+        <div class="zoomBox"><div class="zoomInner" id="z2">ExpoScale</div></div>
+        <div class="zlabel">ease: expoScale(1, 5)　<br>全程视觉速度均匀</div>
+      </div>
+    </div>
+    <button class="btn" style="margin-top:14px" id="zoomPlay">▶ 同时播放对比</button>
+  </div>
+
+  <pre>gsap.registerPlugin(EasePack);   <span class="c">// RoughEase / SlowMo / ExpoScaleEase 都在这个包里</span>
+
+<span class="c">// ── 故障抖动 ──</span>
+gsap.to(el, { x: 400, ease: <span class="k">"rough({ template: power2.out, strength: 2, points: 40, taper: 'out' })"</span> });
+
+<span class="c">// ── 子弹时间：linearRatio 0.7 表示中间 70% 的时间几乎不动 ──</span>
+gsap.to(el, { x: 400, ease: <span class="k">"slow(0.7, 0.7, false)"</span> });
+<span class="c">//                            ↑linearRatio ↑power ↑yoyoMode</span>
+
+<span class="c">// ── 分段跳变 ──</span>
+gsap.to(el, { x: 400, ease: <span class="k">"steps(8)"</span> });
+
+<span class="c">// ── 缩放专用：参数是起始和结束的 scale 值 ──</span>
+gsap.fromTo(el, { scale: 1 }, { scale: 5, ease: <span class="k">"expoScale(1, 5, power2.inOut)"</span> });</pre>
+
+  <p class="note">
+    <b>ExpoScaleEase 的适用条件很明确：</b>只有在 <b>scale 变化幅度很大</b>（比如 1 → 5、0.2 → 1）时才有意义。
+    从 1 放大到 1.1 这种小变化，用不用它看不出区别。<br>
+    <b>RoughEase 有个 taper 参数</b>：<code>"out"</code> 让抖动逐渐平息（收尾干净），<code>"in"</code> 反之，
+    <code>"both"</code> 两头都收。做故障效果一般用 <code>"out"</code>。<br>
+    <b>SlowMo 的第三个参数 yoyoMode</b> 设为 true 时，动画会「去了再回来」，适合做闪烁强调。
+  </p>
+
+<script src="../lib/gsap.min.js"></script>
+<script src="../lib/EasePack.min.js"></script>
+<script>
+  // 采样任意 ease 画成曲线
+  function samplePath(ease) {
+    const fn = gsap.parseEase(ease);
+    const pts = [];
+    for (let i = 0; i <= 160; i++) {
+      const t = i / 160;
+      pts.push(`${(t * 100).toFixed(2)},${(56 - fn(t) * 52).toFixed(2)}`);
+    }
+    return 'M' + pts.join(' L');
+  }
+
+  function makeCell(container, name, desc, ease, dur = 1.3) {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.innerHTML = `
+      <div class="cname">${name}</div>
+      <div class="cdesc">${desc}</div>
+      <svg class="curve" viewBox="0 0 100 58" preserveAspectRatio="none">
+        <rect class="cframe" x="0" y="2" width="100" height="54"></rect>
+        <path class="cpath" d="${samplePath(ease)}" vector-effect="non-scaling-stroke"></path>
+      </svg>
+      <div class="track"><div class="runner"></div></div>
+    `;
+    cell.onclick = () => {
+      const r = cell.querySelector('.runner');
+      const dist = cell.querySelector('.track').clientWidth - 28 - 10;
+      gsap.fromTo(r, { x: 0 }, { x: dist, duration: dur, ease });
+    };
+    container.appendChild(cell);
+    // 首次进入时自动跑一遍
+    gsap.delayedCall(0.1, () => cell.click());
+  }
+
+  // ---------- RoughEase ----------
+  const rg = document.getElementById('roughGrid');
+  makeCell(rg, 'rough({ strength: 1, points: 20 })', '轻微抖动，像手持相机', 'rough({ template: power0.out, strength: 1, points: 20, taper: "none", randomize: true })');
+  makeCell(rg, 'rough({ strength: 3, points: 50 })', '强烈故障，信号干扰感', 'rough({ template: power0.out, strength: 3, points: 50, taper: "none", randomize: true })');
+  makeCell(rg, 'taper: "out"', '抖动逐渐平息，收尾干净——做故障效果一般选这个', 'rough({ template: power2.out, strength: 2, points: 40, taper: "out", randomize: true })');
+  makeCell(rg, 'taper: "both"', '两头平滑中间乱，像穿过一段颠簸', 'rough({ template: power1.inOut, strength: 2.5, points: 40, taper: "both", randomize: true })');
+
+  // ---------- SlowMo ----------
+  const sg = document.getElementById('slowmoGrid');
+  makeCell(sg, 'slow(0.7, 0.7, false)', '中间 70% 时间几乎静止，最常用的配置', 'slow(0.7, 0.7, false)', 2.2);
+  makeCell(sg, 'slow(0.5, 0.8, false)', '慢速段更短，进出更从容', 'slow(0.5, 0.8, false)', 2.2);
+  makeCell(sg, 'slow(0.7, 0.7, true)', 'yoyoMode：去了又回来，适合闪现强调', 'slow(0.7, 0.7, true)', 2.2);
+
+  // 文字滚动实战
+  document.getElementById('smPlay').onclick = () => {
+    const t = document.getElementById('smText');
+    const stage = t.parentElement;
+    gsap.fromTo(t,
+      { x: stage.clientWidth },
+      { x: -t.offsetWidth, duration: 5, ease: 'slow(0.7, 0.7, false)' }
+    );
+  };
+  gsap.delayedCall(0.3, () => document.getElementById('smPlay').click());
+
+  // ---------- SteppedEase ----------
+  const stg = document.getElementById('stepGrid');
+  makeCell(stg, 'steps(4)', '4 段跳变，非常生硬', 'steps(4)');
+  makeCell(stg, 'steps(12)', '12 段，接近逐帧动画的感觉', 'steps(12)');
+  makeCell(stg, 'steps(30)', '30 段，已经接近连续但仍有颗粒感', 'steps(30)');
+
+  // ---------- ExpoScaleEase ----------
+  document.getElementById('zoomPlay').onclick = () => {
+    // 两个方块缩放范围完全相同，只有 ease 不同
+    gsap.fromTo('#z1', { scale: 1 }, { scale: 2.2, duration: 2, ease: 'none', yoyo: true, repeat: 1 });
+    gsap.fromTo('#z2', { scale: 1 }, { scale: 2.2, duration: 2, ease: 'expoScale(1, 2.2, none)', yoyo: true, repeat: 1 });
+  };
+  gsap.delayedCall(0.5, () => document.getElementById('zoomPlay').click());
+</script>
+</body>
+</html>

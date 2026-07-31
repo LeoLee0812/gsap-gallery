@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>物理模拟 · Physics2D / PhysicsProps</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh; padding: 34px 24px 60px;
+    display: flex; flex-direction: column; align-items: center; gap: 20px;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .sub { font-size: 13.5px; opacity: .55; text-align: center; max-width: 760px; line-height: 1.8; margin-top: -12px; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; width: min(1080px, 100%); }
+  .panel {
+    flex: 1 1 330px; background: #161b22; border: 1px solid #30363d;
+    border-radius: 16px; padding: 18px 20px;
+  }
+  .ptitle { font-size: 14px; font-weight: 700; color: #58e6a8; margin-bottom: 4px; }
+  .pdesc { font-size: 12px; opacity: .5; line-height: 1.65; margin-bottom: 12px; min-height: 46px; }
+  .field {
+    height: 260px; position: relative; overflow: hidden; cursor: pointer;
+    background: #0d1117; border: 1px solid #21262d; border-radius: 12px;
+  }
+  .p { position: absolute; border-radius: 2px; pointer-events: none; }
+  .ball { position: absolute; width: 22px; height: 22px; border-radius: 50%; }
+  .ground { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: #30363d; }
+  .hint {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 13px; opacity: .3; pointer-events: none;
+  }
+  .params {
+    margin-top: 10px; font-size: 11.5px; font-family: ui-monospace, Menlo, monospace;
+    color: #6e7681; line-height: 1.8;
+  }
+  .params b { color: #58e6a8; }
+  .ctrl { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 11.5px; }
+  .ctrl label { width: 62px; opacity: .5; }
+  .ctrl input { flex: 1; accent-color: #58e6a8; }
+  .ctrl span { width: 42px; text-align: right; color: #58e6a8; font-family: ui-monospace, Menlo, monospace; }
+  pre {
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    padding: 16px 20px; font-size: 12.5px; line-height: 1.75;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #8b949e; width: min(1080px, 100%); overflow-x: auto;
+  }
+  pre .k { color: #58e6a8; }
+  pre .c { color: #6e7681; }
+  .note {
+    width: min(1080px, 100%); font-size: 13px; color: #8b949e; line-height: 1.9;
+    border-top: 1px solid #21262d; padding-top: 16px;
+  }
+  .note b { color: #58e6a8; }
+</style>
+</head>
+<body>
+  <h1>物理模拟 · Physics2D / PhysicsProps</h1>
+  <p class="sub">
+    抛物线、重力下落、摩擦减速——这些不该用 ease 硬凑，
+    直接给<b>初速度、角度、重力、摩擦力</b>，让 GSAP 按物理公式算轨迹。
+    撒花、粒子、烟花、落叶全靠这两个插件。<b>点任意区域触发。</b>
+  </p>
+
+  <div class="row">
+    <div class="panel">
+      <div class="ptitle">Physics2D · 二维抛射</div>
+      <div class="pdesc">给定<b>速度 + 角度 + 重力</b>，自动算出抛物线轨迹。撒花、爆炸、喷泉的标准解法。</div>
+      <div class="field" id="f1"><div class="hint">点击喷发</div></div>
+      <div class="ctrl"><label>重力</label><input type="range" id="g1" min="200" max="2500" value="1200"><span id="gv1">1200</span></div>
+      <div class="ctrl"><label>初速度</label><input type="range" id="v1" min="200" max="1200" value="600"><span id="vv1">600</span></div>
+      <div class="params" id="pm1"></div>
+    </div>
+
+    <div class="panel">
+      <div class="ptitle">Physics2D · 摩擦减速</div>
+      <div class="pdesc">不加重力，只加<b>摩擦力（friction）</b>：粒子朝各方向飞散并逐渐停下，像冰面上的滑行。</div>
+      <div class="field" id="f2"><div class="hint">点击扩散</div></div>
+      <div class="ctrl"><label>摩擦力</label><input type="range" id="fr2" min="0" max="0.3" step="0.01" value="0.08"><span id="frv2">0.08</span></div>
+      <div class="params" id="pm2"></div>
+    </div>
+
+    <div class="panel">
+      <div class="ptitle">PhysicsProps · 任意属性做物理</div>
+      <div class="pdesc">不局限于 x/y，<b>任何数值属性</b>都能给它速度和加速度——旋转、缩放、透明度都行。</div>
+      <div class="field" id="f3">
+        <div class="ground"></div>
+        <div class="ball" id="ball3" style="background:linear-gradient(135deg,#58e6a8,#3b82f6);width:44px;height:44px;left:50%;margin-left:-22px;top:20px"></div>
+        <div class="hint" style="align-items:flex-end;padding-bottom:20px">点击让它翻滚下落</div>
+      </div>
+      <div class="params" id="pm3"></div>
+    </div>
+  </div>
+
+  <pre>gsap.registerPlugin(Physics2DPlugin, PhysicsPropsPlugin);
+
+<span class="c">// ── Physics2D：给速度、角度、重力，自动算抛物线 ──</span>
+gsap.to(particle, {
+  duration: 2,
+  physics2D: {
+    velocity: 600,        <span class="c">// 初速度（像素/秒）</span>
+    angle: -75,           <span class="c">// 发射角度（度，-90 是正上方）</span>
+    gravity: 1200,        <span class="c">// 重力加速度（像素/秒²）</span>
+    friction: 0           <span class="c">// 空气阻力 0~1</span>
+  },
+  <span class="c">// 物理只管位置，旋转和淡出还是照常写</span>
+  rotation: <span class="k">"random(-540, 540)"</span>,
+  opacity: 0,
+  ease: <span class="k">"none"</span>
+});
+
+<span class="c">// ── PhysicsProps：给任意属性配速度和加速度 ──</span>
+gsap.to(box, {
+  duration: 2,
+  physicsProps: {
+    y:        { velocity: 0,   acceleration: 900 },   <span class="c">// 自由落体</span>
+    rotation: { velocity: 320, friction: 0.06 },      <span class="c">// 边转边被摩擦力拖慢</span>
+    scale:    { velocity: -0.4, acceleration: 0.3 }
+  }
+});</pre>
+
+  <p class="note">
+    <b>Physics2D 和 PhysicsProps 怎么选：</b><br>
+    · <b>Physics2D</b> —— 专为「二维空间里的抛射」优化，参数是速度/角度/重力，最符合直觉。做撒花、爆炸、喷射选它。<br>
+    · <b>PhysicsProps</b> —— 更通用，<b>给任意属性单独配一组物理参数</b>。想让 rotation 有惯性、让 opacity 加速衰减，只能用它。<br><br>
+    <b>物理动画有个天然限制：无法预知终点。</b>所以它不能倒放、不能 seek 到任意时刻。
+    如果你需要精确控制结束位置，该用 <b>InertiaPlugin</b>（它可以指定 end 值）而不是物理插件。<br>
+    <b>角度是度不是弧度</b>，且 <b>-90 指向正上方</b>（因为屏幕 y 轴向下）——这两个几乎人人第一次都要栽一下。
+  </p>
+
+<script src="../lib/gsap.min.js"></script>
+<script src="../lib/Physics2DPlugin.min.js"></script>
+<script src="../lib/PhysicsPropsPlugin.min.js"></script>
+<script>
+  gsap.registerPlugin(Physics2DPlugin, PhysicsPropsPlugin);
+
+  const COLORS = ['#58e6a8', '#3b82f6', '#f0883e', '#a371f7', '#f85149', '#e3b341', '#db61a2'];
+
+  // ---------- ① 抛射喷发 ----------
+  const f1 = document.getElementById('f1');
+  const g1 = document.getElementById('g1'), v1 = document.getElementById('v1');
+  g1.oninput = () => document.getElementById('gv1').textContent = g1.value;
+  v1.oninput = () => document.getElementById('vv1').textContent = v1.value;
+
+  f1.addEventListener('click', e => {
+    const r = f1.getBoundingClientRect();
+    const ox = e.clientX - r.left, oy = e.clientY - r.top;
+    const gravity = +g1.value, baseV = +v1.value;
+
+    for (let i = 0; i < 44; i++) {
+      const p = document.createElement('div');
+      p.className = 'p';
+      const w = gsap.utils.random(5, 11);
+      p.style.cssText = `width:${w}px;height:${w * gsap.utils.random(0.6, 1.6)}px;background:${gsap.utils.random(COLORS)};left:${ox}px;top:${oy}px`;
+      f1.appendChild(p);
+
+      gsap.to(p, {
+        duration: gsap.utils.random(1.4, 2.4),
+        physics2D: {
+          velocity: baseV * gsap.utils.random(0.55, 1.15),
+          // -90 是正上方，这里在正上方左右 55 度范围内散开
+          angle: gsap.utils.random(-145, -35),
+          gravity
+        },
+        rotation: gsap.utils.random(-720, 720),
+        opacity: 0,
+        ease: 'none',
+        onComplete: () => p.remove()
+      });
+    }
+    document.getElementById('pm1').innerHTML =
+      `velocity: <b>${baseV}</b>　angle: <b>-145° ~ -35°</b>　gravity: <b>${gravity}</b>`;
+  });
+
+  // ---------- ② 摩擦扩散 ----------
+  const f2 = document.getElementById('f2');
+  const fr2 = document.getElementById('fr2');
+  fr2.oninput = () => document.getElementById('frv2').textContent = (+fr2.value).toFixed(2);
+
+  f2.addEventListener('click', e => {
+    const r = f2.getBoundingClientRect();
+    const ox = e.clientX - r.left, oy = e.clientY - r.top;
+    const friction = +fr2.value;
+
+    for (let i = 0; i < 50; i++) {
+      const p = document.createElement('div');
+      p.className = 'p';
+      p.style.cssText = `width:7px;height:7px;border-radius:50%;background:${gsap.utils.random(COLORS)};left:${ox}px;top:${oy}px`;
+      f2.appendChild(p);
+
+      gsap.to(p, {
+        duration: 2.2,
+        physics2D: {
+          velocity: gsap.utils.random(180, 620),
+          // 全方向均匀散开
+          angle: (i / 50) * 360 + gsap.utils.random(-12, 12),
+          gravity: 0,
+          friction
+        },
+        opacity: 0,
+        scale: 0.3,
+        ease: 'none',
+        onComplete: () => p.remove()
+      });
+    }
+    document.getElementById('pm2').innerHTML =
+      `gravity: <b>0</b>　friction: <b>${friction.toFixed(2)}</b>　→ 摩擦力越大停得越快`;
+  });
+
+  // ---------- ③ PhysicsProps：多属性各自物理 ----------
+  const f3 = document.getElementById('f3');
+  const ball3 = document.getElementById('ball3');
+  f3.addEventListener('click', () => {
+    gsap.killTweensOf(ball3);
+    gsap.set(ball3, { y: 0, rotation: 0, scale: 1, x: 0 });
+    const H = f3.clientHeight - 44 - 22;
+
+    gsap.to(ball3, {
+      duration: 1.9,
+      physicsProps: {
+        // y：初速度 0，向下加速 —— 标准自由落体
+        y: { velocity: 0, acceleration: 780, end: H },
+        // x：有初速度但被摩擦力拖慢 —— 边落边横向滑行
+        x: { velocity: gsap.utils.random(-140, 140), friction: 0.04 },
+        // rotation：自转，同样受摩擦力影响逐渐慢下来
+        rotation: { velocity: gsap.utils.random(-420, 420), friction: 0.02 }
+      },
+      ease: 'none',
+      onComplete() {
+        // 落地后补一个挤压反馈
+        gsap.to(ball3, { scaleY: 0.65, scaleX: 1.3, duration: 0.1, transformOrigin: 'center bottom', yoyo: true, repeat: 1 });
+      }
+    });
+
+    document.getElementById('pm3').innerHTML =
+      `y: <b>acceleration 780</b>（重力）<br>x: <b>friction 0.04</b>（横向滑行减速）<br>rotation: <b>velocity ±420</b>（自转）`;
+  });
+</script>
+</body>
+</html>
