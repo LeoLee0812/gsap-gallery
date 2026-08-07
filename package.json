@@ -1,0 +1,14 @@
+{
+  "name": "gsap-gallery",
+  "private": true,
+  "version": "1.0.0",
+  "description": "GSAP 动效图鉴：72 个可直接运行的 GSAP demo",
+  "scripts": {
+    "build": "echo \"纯静态站，无需构建\"",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
+  "devDependencies": {
+    "wrangler": "^4.119.0"
+  }
+}
