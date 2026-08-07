@@ -141,6 +141,17 @@
     background: rgba(88,230,168,.07); border-radius: 5px; padding: 2px 7px;
   }
   .card .tag.plug { color: var(--blue); border-color: rgba(59,130,246,.3); background: rgba(59,130,246,.07); }
+  /* 「复制给 AI」：把这个 demo 的链接和一段现成提示词丢进剪贴板，
+     直接粘给 Claude Code 之类的 Agent，让它照着复刻到自己的项目里。
+     它套在 <a class="card"> 内部，所以点击时必须阻止默认跳转和冒泡。 */
+  .card .ai {
+    margin-top: 11px; width: 100%; display: flex; align-items: center; justify-content: center;
+    gap: 6px; font-family: inherit; font-size: 11.5px; color: var(--dim); cursor: pointer;
+    background: rgba(59,130,246,.06); border: 1px dashed rgba(59,130,246,.32);
+    border-radius: 7px; padding: 6px 0; transition: all .16s;
+  }
+  .card .ai:hover { color: var(--blue); border-style: solid; background: rgba(59,130,246,.13); }
+  .card .ai.done { color: var(--green); border-color: rgba(88,230,168,.5); background: rgba(88,230,168,.1); }
   .new {
     font-size: 9.5px; font-weight: 800; padding: 2px 6px; border-radius: 4px;
     background: var(--orange); color: var(--bg); letter-spacing: .3px; flex-shrink: 0;
@@ -173,7 +184,8 @@
     <h1 id="title">GSAP 动效图鉴</h1>
     <p class="tagline" id="tagline">
       按 GreenSock 官方 gsap-skills 全量覆盖的动效合集。
-      每个 demo 都能直接玩、直接抄，全部离线运行，代码带中文注释。
+      看到想要的效果，点开就能玩、就能抄；
+      也可以按一下卡片上的「复制给 AI」，把链接连同提示词丢给你的 Agent，让它复刻进你自己的页面。
     </p>
     <div class="stats">
       <div class="stat"><div class="num" data-n="72">0</div><div class="lab">可交互 Demo</div></div>
@@ -402,11 +414,47 @@
             <div class="tags">
               ${it.tags.map(t => `<span class="tag ${PLAIN.includes(t) ? '' : 'plug'}">${esc(t)}</span>`).join('')}
             </div>
+            <button class="ai" data-f="${esc(it.f)}" data-t="${esc(it.t)}">⧉ 复制给 AI</button>
           </a>
         `).join('')}
       </div>
     </section>
   `).join('');
+
+  // ============ 复制给 AI ============
+  // 拼一段可以直接粘进 Claude Code / Cursor 的提示词：
+  // 带上这个 demo 的公网链接，Agent 自己去读源码，再照着复刻进用户的项目。
+  const ORIGIN = location.origin.startsWith('http') ? location.origin : 'https://gsap.leolee0812.site';
+  function aiPrompt(file, title) {
+    const url = `${ORIGIN}/demos/${file}.html`;
+    return `参考这个页面：${url}
+它用 GSAP 3.13 实现了「${title}」，源码里有完整可运行的实现和中文注释。
+请先读取这个链接，弄清它的实现方式（用到哪些插件、时间轴怎么排、缓动怎么选），
+然后把同样的效果复刻到我的项目里：沿用我现有的页面结构和配色，保持一致的节奏和手感。`;
+  }
+
+  groupsEl.addEventListener('click', async e => {
+    const btn = e.target.closest('.ai');
+    if (!btn) return;
+    e.preventDefault();   // 按钮在 <a> 里面，别让它跳去 demo 页
+    e.stopPropagation();
+    const text = aiPrompt(btn.dataset.f, btn.dataset.t);
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // 非 https 或旧浏览器没有剪贴板 API，退回选中一个临时 textarea
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+    }
+    btn.textContent = '✓ 已复制，粘给你的 Agent';
+    btn.classList.add('done');
+    clearTimeout(btn._t);
+    btn._t = setTimeout(() => {
+      btn.textContent = '⧉ 复制给 AI';
+      btn.classList.remove('done');
+    }, 2200);
+  });
 
   // ============ 筛选逻辑 ============
   const searchInput = document.getElementById('search');
