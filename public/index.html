@@ -388,7 +388,7 @@
       <p class="gdesc">${g.desc}</p>
       <div class="grid">
         ${g.items.map(it => `
-          <a class="card" href="./demos/${it.f}" target="_blank" rel="noopener"
+          <a class="card" href="./demos/${it.f}.html" target="_blank" rel="noopener"
              data-key="${(it.t + ' ' + it.d + ' ' + it.tags.join(' ') + ' ' + it.f).toLowerCase()}"
              data-new="${it.isNew ? 1 : 0}">
             <div class="t">${it.t}${it.isNew ? '<span class="new">NEW</span>' : ''}</div>

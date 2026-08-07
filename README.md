@@ -12,7 +12,7 @@
 **72 个可交互的 GSAP 动效 demo**，按 GreenSock 官方 [gsap-skills](https://github.com/greensock/gsap-skills) 技能库全量覆盖。
 每个 demo 都是一个独立的 HTML 文件，能直接玩、直接抄，全部离线运行，代码带中文注释。
 
-> 在线预览：<https://gsap.saveme505.help>
+> 在线预览：<https://gsap.leolee0812.site>（Cloudflare Workers 托管）
 
 ---
 
@@ -28,12 +28,16 @@
 
 ```
 gsap-gallery/
-├── index.html          # 索引页（带搜索 + 分类筛选，本身也是个 demo）
-├── demos/              # 72 个独立 demo，每个都是自包含的单文件
-│   ├── ease-visualizer.html
-│   ├── scrolltrigger-pin.html
-│   └── ...
-├── lib/                # GSAP 3.13 + 全部 25 个插件（本地副本，断网可用）
+├── public/             # 站点根目录（Cloudflare Workers Static Assets）
+│   ├── index.html      # 索引页（带搜索 + 分类筛选，本身也是个 demo）
+│   ├── 404.html
+│   ├── _headers        # lib/ 走一年强缓存
+│   ├── demos/          # 72 个独立 demo，每个都是自包含的单文件
+│   │   ├── ease-visualizer.html
+│   │   ├── scrolltrigger-pin.html
+│   │   └── ...
+│   └── lib/            # GSAP 3.13 + 全部 25 个插件（本地副本，断网可用）
+├── wrangler.jsonc      # Workers 配置
 └── README.md
 ```
 
@@ -73,14 +77,14 @@ git clone https://github.com/LeoLee0812/gsap-gallery.git
 cd gsap-gallery
 
 # 任选一种方式起个静态服务器
-python3 -m http.server 8080
+python3 -m http.server 8080 -d public
 # 或
-npx serve .
+npx serve public
 ```
 
 然后打开 <http://localhost:8080>。
 
-> 直接双击 `index.html` 用 `file://` 打开也能跑，只是个别用到 `fetch` 的 demo 会受同源策略限制。
+> 直接双击 `public/index.html` 用 `file://` 打开也能跑，只是个别用到 `fetch` 的 demo 会受同源策略限制。
 
 ## 关于 GSAP 免费这件事
 
