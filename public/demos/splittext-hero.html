@@ -36,12 +36,14 @@
   .hero {
     text-align: center;
     padding: 2rem;
-    max-width: 880px;
+    max-width: 980px;
   }
 
   /* 主标题：大号、加粗 */
   .hero-title {
-    font-size: clamp(2.5rem, 8vw, 5.5rem);
+    /* 拆字动画会把每个字变成 inline-block，字号一大末字就会被挤到第二行变成孤字，
+       所以这里的上限要保证整行标题在容器宽度内放得下 */
+    font-size: clamp(2.2rem, 6vw, 4.5rem);
     font-weight: 800;
     line-height: 1.05;
     letter-spacing: -0.02em;

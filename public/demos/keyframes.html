@@ -47,6 +47,13 @@
     line-height: 1.9; border-top: 1px solid #21262d; padding-top: 18px;
   }
   .note b { color: #58e6a8; }
+
+  /* ---- 手机适配：三栏 flex-basis:300px 塞不进 390px，改成单栏堆叠 ----
+     min-width:0 是关键：不写的话里面的 <pre> 会把 flex 子项顶宽，overflow-x 也救不回来 */
+  @media (max-width: 520px) {
+    .col { flex: 1 1 100%; min-width: 0; }
+    pre { max-width: 100%; }
+  }
 </style>
 </head>
 <body>

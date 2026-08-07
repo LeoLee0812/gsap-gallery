@@ -51,6 +51,13 @@
     background: #58e6a8; color: #0d1117; border: 0; border-radius: 24px;
     padding: 11px 30px; font-size: 15px; font-weight: 600; cursor: pointer;
   }
+
+  /* ---- 手机适配：代码块 max-width:560px 比屏还宽，且 8 列方块要缩 ---- */
+  @media (max-width: 520px) {
+    pre { max-width: 100%; width: 100%; box-sizing: border-box; }
+    #grid { gap: 6px; }
+    .box { width: 34px; height: 34px; }
+  }
 </style>
 </head>
 <body>

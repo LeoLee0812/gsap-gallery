@@ -15,6 +15,13 @@
     background:linear-gradient(135deg,#58e6a8,#3b82f6)}
   button{padding:12px 28px;border:0;border-radius:30px;background:#58e6a8;color:#0d1117;
     font-size:15px;font-weight:600;cursor:pointer}
+
+  /* ---- 手机适配：6 列 × 64px 方块超出屏宽，降到 4 列并缩小方块 ---- */
+  @media (max-width: 520px) {
+    body { padding-left: 16px; padding-right: 16px; }
+    .grid { grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .box { width: 56px; height: 56px; }
+  }
 </style>
 </head>
 <body>

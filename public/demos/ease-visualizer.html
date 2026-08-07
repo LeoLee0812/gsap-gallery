@@ -61,6 +61,12 @@
     text-align: center; line-height: 1.8;
   }
   code { color: #58e6a8; font-family: ui-monospace, Menlo, monospace; }
+
+  /* ---- 手机适配：网格最小列宽 210px + 左右各 24px padding 会溢出一点 ---- */
+  @media (max-width: 520px) {
+    body { padding-left: 14px; padding-right: 14px; }
+    .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  }
 </style>
 </head>
 <body>

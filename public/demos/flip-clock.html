@@ -124,6 +124,14 @@
     color: var(--text);
     opacity: 0.4;
   }
+
+  /* ---- 手机适配：翻页牌按 84px 宽排一整行会撑破 390px 的屏，整体缩一档 ---- */
+  @media (max-width: 520px) {
+    .clock { gap: 8px; }
+    .group { gap: 5px; }
+    .flip { width: 46px; height: 66px; font-size: 46px; line-height: 66px; }
+    .sep { font-size: 30px; }
+  }
 </style>
 </head>
 <body>

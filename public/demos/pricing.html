@@ -181,18 +181,23 @@
     gsap.set(featured, { scale: 1.06 });
 
     // 入场 timeline：三张卡片 stagger 依次上浮淡入
+    // 注意：卡片在 CSS 里就是 opacity:0（防止入场前闪一下），
+    // 所以这里必须用 fromTo 把终点显式写成 opacity:1。
+    // 若写成 gsap.from({opacity:0})，from 会把「当前值」当终点 —— 当前值正好是 0，
+    // 动画就成了 0 → 0，三张卡片永远不显示。
     const intro = gsap.timeline();
-    intro.from(cards, {
-      y: 60,
-      opacity: 0,
-      duration: 0.7,
-      ease: "power3.out",
-      stagger: 0.15,
-      // from 会把当前值作为终点，这里需手动恢复推荐卡的 scale
-      onComplete: () => gsap.set(featured, { clearProps: "opacity" })
-    });
-    // 让卡片可见（from 动画结束后 opacity 回到 1）
-    gsap.set(cards, { opacity: 1, delay: 0 });
+    intro.fromTo(cards,
+      { y: 60, opacity: 0 },
+      {
+        y: 0,
+        opacity: 1,
+        duration: 0.7,
+        ease: "power3.out",
+        stagger: 0.15
+        // 这里千万别用 clearProps:"opacity" 收尾：清掉行内值之后，
+        // CSS 里的 .card{opacity:0} 会重新生效，推荐卡片当场消失。
+      }
+    );
 
     // 推荐卡片入场后持续轻微浮动（yoyo 循环）
     intro.to(featured, {
