@@ -5,12 +5,15 @@
   <img src="https://img.shields.io/badge/Demo-72-3b82f6?style=flat-square&logo=html5&logoColor=white" alt="72 个 Demo">
   <img src="https://img.shields.io/badge/依赖-0-f0883e?style=flat-square&logo=javascript&logoColor=white" alt="零依赖">
   <img src="https://img.shields.io/github/last-commit/LeoLee0812/gsap-gallery?style=flat-square&logo=github&label=最近更新" alt="最近更新">
+  <img src="https://img.shields.io/github/commit-activity/w/LeoLee0812/gsap-gallery?style=flat-square&logo=github&label=本周提交" alt="本周提交">
   <img src="https://img.shields.io/github/repo-size/LeoLee0812/gsap-gallery?style=flat-square&logo=github&label=体积" alt="仓库体积">
   <img src="https://img.shields.io/badge/License-MIT-6e7681?style=flat-square" alt="MIT">
 </p>
 
 **72 个可交互的 GSAP 动效 demo**，按 GreenSock 官方 [gsap-skills](https://github.com/greensock/gsap-skills) 技能库全量覆盖。
 每个 demo 都是一个独立的 HTML 文件，能直接玩、直接抄，全部离线运行，代码带中文注释。
+
+**每天新增一个**：从 2026-10-18 起每天上线一个新动效，接下来要做的在 [ROADMAP.md](./ROADMAP.md)。
 
 > 在线预览：<https://gsap.leolee0812.site>（Cloudflare Workers 托管）
 
