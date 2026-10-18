@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1117'/%3E%3Cpath d='M9 22c3-9 8-13 14-12' stroke='%2358e6a8' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='23' cy='10' r='3' fill='%233b82f6'/%3E%3C/svg%3E">
+<title>粒子文字</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+    min-height: 100vh; padding: 40px 20px 80px;
+    display: flex; flex-direction: column; align-items: center; gap: 22px;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .sub { font-size: 14px; opacity: .55; margin-top: -12px; text-align: center; line-height: 1.6; }
+
+  /* 舞台：画布按容器宽度自适应，高度随宽度走一个比例，手机上不会被压得太扁 */
+  .stage {
+    position: relative; width: 100%; max-width: 960px;
+    aspect-ratio: 16 / 7; min-height: 240px;
+    background:
+      radial-gradient(ellipse at 50% 55%, rgba(88,230,168,.07), transparent 65%),
+      #161b22;
+    border: 1px solid #30363d; border-radius: 16px; overflow: hidden;
+  }
+  /* 画布上禁用浏览器手势，否则手指一划就变成了滚动页面，粒子收不到 pointermove */
+  #cv { display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+  .tip {
+    position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+    font-size: 12px; color: #8b949e; letter-spacing: .5px; white-space: nowrap;
+    pointer-events: none; transition: opacity .6s;
+  }
+
+  .panel {
+    display: flex; gap: 22px 28px; flex-wrap: wrap; justify-content: center; align-items: flex-end;
+    background: #161b22; border: 1px solid #30363d; border-radius: 14px;
+    padding: 16px 22px; max-width: 960px; width: 100%;
+  }
+  .ctrl { display: flex; flex-direction: column; gap: 7px; }
+  .ctrl label { font-size: 12px; opacity: .6; }
+  .ctrl .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .opt {
+    background: #0d1117; color: #8b949e; border: 1px solid #30363d;
+    border-radius: 7px; padding: 6px 12px; font-size: 13px;
+    font-family: inherit; cursor: pointer; transition: all .16s;
+  }
+  .opt:hover { border-color: #58e6a8; color: #e6edf3; }
+  .opt.on { background: #58e6a8; color: #0d1117; border-color: #58e6a8; font-weight: 600; }
+  #custom {
+    width: 104px; background: #0d1117; color: #e6edf3; border: 1px solid #30363d;
+    border-radius: 7px; padding: 6px 10px; font-size: 13px; font-family: inherit; outline: none;
+    transition: border-color .16s;
+  }
+  #custom:focus { border-color: #58e6a8; }
+  input[type=range] { width: 140px; accent-color: #58e6a8; }
+  .val { font-size: 12px; color: #58e6a8; font-family: ui-monospace, Menlo, monospace; }
+  .replay {
+    background: #58e6a8; color: #0d1117; border: 0; border-radius: 24px;
+    padding: 10px 26px; font-size: 14px; font-weight: 600; cursor: pointer;
+    font-family: inherit; transition: transform .16s, box-shadow .16s;
+  }
+  .replay:hover { box-shadow: 0 0 22px rgba(88,230,168,.4); }
+  .replay:active { transform: scale(.96); }
+
+  .note { font-size: 12px; color: #6e7681; text-align: center; max-width: 560px; line-height: 1.7; }
+  .note code { color: #58e6a8; font-family: ui-monospace, Menlo, monospace; }
+
+  @media (max-width: 520px) {
+    body { padding: 28px 14px 72px; gap: 18px; }
+    .stage { aspect-ratio: 16 / 11; min-height: 220px; }
+    .panel { padding: 14px 16px; gap: 16px 20px; justify-content: flex-start; }
+    input[type=range] { width: 120px; }
+  }
+</style>
+</head>
+<body>
+  <h1>粒子文字</h1>
+  <p class="sub">文字被拆成上千个粒子，手指或鼠标划过时被推散，移开后自己弹回原位</p>
+
+  <div class="stage">
+    <canvas id="cv"></canvas>
+    <div class="tip" id="tip">在文字上划过试试</div>
+  </div>
+
+  <div class="panel">
+    <div class="ctrl">
+      <label>换个字（粒子会飞过去重组）</label>
+      <div class="row" id="words">
+        <button class="opt on" data-w="GSAP">GSAP</button>
+        <button class="opt" data-w="粒子">粒子</button>
+        <button class="opt" data-w="HELLO">HELLO</button>
+        <input id="custom" maxlength="6" placeholder="自己输入" enterkeyhint="done">
+      </div>
+    </div>
+    <div class="ctrl">
+      <label>推开半径 <span class="val" id="rVal">90px</span></label>
+      <input type="range" id="radius" min="30" max="180" step="5" value="90">
+    </div>
+    <div class="ctrl">
+      <label>回弹力度 <span class="val" id="kVal">0.06</span></label>
+      <input type="range" id="spring" min="0.01" max="0.2" step="0.01" value="0.06">
+    </div>
+    <button class="replay" id="replay">✦ 炸开重组</button>
+  </div>
+
+  <p class="note">
+    入场、换字、炸开用 GSAP 补间粒子的「基准位置」；鼠标推开用 <code>gsap.ticker</code> 里的一个小弹簧叠加「偏移量」。
+    两层各管各的，所以换字飞行途中照样能被推开。
+  </p>
+
+<script src="../lib/gsap.min.js"></script>
+<script>
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  const tip = document.getElementById('tip');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // 所有可调参数集中在这里，滑块只改这个对象，ticker 每帧读最新值
+  const cfg = { radius: 90, spring: 0.06, friction: 0.84, force: 5 };
+  const pointer = { x: -9999, y: -9999, active: false };
+
+  let W = 0, H = 0, dpr = 1;
+  let word = 'GSAP';
+  let particles = [];
+  let gap = 4;
+
+  // 每个粒子分成两层坐标：
+  //   bx/by —— 基准位置，只归 GSAP 补间管（入场、换字、炸开）
+  //   ox/oy —— 被鼠标推开的偏移，只归弹簧物理管
+  // 画的时候两者相加。这样补间和物理互不覆盖，不用担心 overwrite 冲突。
+  function makeParticle(x, y) {
+    return { bx: x, by: y, ox: 0, oy: 0, vx: 0, vy: 0, a: 1, s: 1 };
+  }
+
+  // ---------- 取点：把文字画到离屏画布上，按网格读像素 ----------
+  const off = document.createElement('canvas');
+  const octx = off.getContext('2d', { willReadFrequently: true });
+
+  function sampleWord(text) {
+    off.width = W; off.height = H;
+    octx.clearRect(0, 0, W, H);
+    const family = '"PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", system-ui, sans-serif';
+    // 先按 100px 量宽度，再等比缩放到舞台的 86% 宽、62% 高，长短词都能撑满又不贴边
+    octx.font = `900 100px ${family}`;
+    const w100 = octx.measureText(text).width || 1;
+    const size = Math.min(W * 0.86 / w100 * 100, H * 0.62);
+    octx.font = `900 ${size}px ${family}`;
+    octx.textAlign = 'center';
+    octx.textBaseline = 'middle';
+    octx.fillStyle = '#fff';
+    octx.fillText(text, W / 2, H / 2 + size * 0.04);
+
+    // 网格间距跟着字号走：字小就密一点，字大就疏一点，粒子总数封顶 4200，
+    // 手机和大屏都流畅，也不会稀到认不出字
+    const data = octx.getImageData(0, 0, W, H).data;
+    gap = Math.max(3, Math.round(size / 46));
+    let pts;
+    do {
+      pts = [];
+      for (let y = 0; y < H; y += gap) {
+        for (let x = 0; x < W; x += gap) {
+          if (data[(y * W + x) * 4 + 3] > 128) pts.push({ x, y });
+        }
+      }
+      if (pts.length > 4200) gap++;
+    } while (pts.length > 4200);
+    return pts;
+  }
+
+  // ---------- 换字：老粒子尽量复用，多退少补 ----------
+  function setWord(text, { intro = false } = {}) {
+    word = text;
+    const pts = gsap.utils.shuffle(sampleWord(text));
+    const old = particles;
+    const next = [];
+
+    pts.forEach((p, i) => {
+      // 复用老粒子：它从当前位置直接飞过去，看起来就是同一批粒子在重组
+      let q = old[i];
+      if (!q) {
+        // 新词更大、粒子不够：从某个老粒子身上「分裂」出来，或者入场时从四周散落进场
+        const src = old.length ? old[(Math.random() * old.length) | 0] : null;
+        q = src ? makeParticle(src.bx + src.ox, src.by + src.oy)
+                : makeParticle(Math.random() * W, Math.random() * H);
+        q.a = 0;
+      }
+      q.tx = p.x; q.ty = p.y; q.dying = false;
+      next.push(q);
+    });
+
+    // 新词更小、粒子多出来：让它们飞向随机一个落点并淡出，落地后再从数组里删掉
+    const leftovers = old.slice(pts.length);
+    leftovers.forEach(q => {
+      const p = pts[(Math.random() * pts.length) | 0] || { x: W / 2, y: H / 2 };
+      q.tx = p.x; q.ty = p.y; q.dying = true;
+    });
+
+    particles = next.concat(leftovers);
+    gsap.killTweensOf(particles);
+
+    if (reduce) {
+      // 减少动态：不飞行，直接归位，整块画布做一次极短的淡入
+      particles = next;
+      next.forEach(q => { q.bx = q.tx; q.by = q.ty; q.a = 1; q.s = 1; });
+      gsap.fromTo(cv, { opacity: 0 }, { opacity: 1, duration: 0.3 });
+      return;
+    }
+
+    particles.forEach(q => {
+      // 按落点的横坐标错开起飞：整体像一阵风从左往右把字吹成形，而不是一团乱飞
+      const delay = (q.tx / W) * (intro ? 0.7 : 0.45) + Math.random() * 0.25;
+      const dur = intro ? gsap.utils.random(1.4, 2.1) : gsap.utils.random(1.0, 1.5);
+      // 中途绕一下：随机抬起一个弧顶，粒子走的是弯道不是直线，重组才有流动感
+      const lift = gsap.utils.random(-1, 1) * H * 0.35;
+      const mx = (q.bx + q.tx) / 2 + gsap.utils.random(-1, 1) * W * 0.08;
+      const my = (q.by + q.ty) / 2 + lift;
+      gsap.timeline({ delay, onComplete: q.dying ? () => { q.dead = true; } : null })
+        .to(q, { bx: mx, by: my, duration: dur * 0.45, ease: 'sine.in' })
+        .to(q, { bx: q.tx, by: q.ty, duration: dur * 0.55, ease: 'expo.out' })
+        // 透明度单独补间，和位移并行；dying 的粒子在后半程淡掉
+        .to(q, { a: q.dying ? 0 : 1, duration: dur * 0.6, ease: 'power1.inOut' }, q.dying ? dur * 0.4 : 0)
+        // 落地瞬间粒子先放大再缩回，一大片同时「叮」一下，字就亮了；
+        // immediateRender 要关掉，否则 1.9 倍会在时间轴创建时就生效，飞行全程都是大颗粒
+        .fromTo(q, { s: 1.9 }, { s: 1, duration: 0.6, ease: 'power2.out', immediateRender: false }, dur * 0.85);
+    });
+  }
+
+  // ---------- 炸开重组：从中心向外冲开，停顿一拍，再吸回来 ----------
+  function explode() {
+    if (reduce) { setWord(word); return; }
+    gsap.killTweensOf(particles);
+    particles = particles.filter(q => !q.dying);
+    const cx = W / 2, cy = H / 2;
+    particles.forEach(q => {
+      const ang = Math.atan2(q.by - cy, q.bx - cx) + gsap.utils.random(-0.5, 0.5);
+      const dist = gsap.utils.random(0.35, 0.9) * Math.max(W, H);
+      const delay = (Math.hypot(q.bx - cx, q.by - cy) / W) * 0.25;
+      gsap.timeline({ delay })
+        // 冲出去用 power3.out：一开始很猛，迅速减速，像被冲击波推开
+        .to(q, { bx: cx + Math.cos(ang) * dist, by: cy + Math.sin(ang) * dist * 0.6, a: 0.35,
+                 duration: 0.9, ease: 'power3.out' })
+        // 回来用 expo.inOut：起步犹豫，中段加速，末端轻轻落定，和出去的节奏形成反差
+        .to(q, { bx: q.tx, by: q.ty, a: 1, duration: gsap.utils.random(1.2, 1.7), ease: 'expo.inOut' }, '+=0.15')
+        .fromTo(q, { s: 1.9 }, { s: 1, duration: 0.6, ease: 'power2.out', immediateRender: false }, '-=0.25');
+    });
+  }
+
+  // ---------- 每帧：弹簧物理 + 绘制 ----------
+  // 颜色不逐个粒子设：先把所有粒子拼成一条 path 填白色，再用 source-in 盖一层横向渐变，
+  // 三千个点只要两次 fill，比每个点切一次 fillStyle 快得多
+  let grad;
+  function tick() {
+    const R = cfg.radius, R2 = R * R, k = cfg.spring, fr = cfg.friction, F = cfg.force;
+    const px = pointer.x, py = pointer.y;
+    // 粒子边长取网格间距的六成：留四成缝隙，既看得出是一颗颗粒子，字形又是满的
+    const base = dpr * gap * 0.6;
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.clearRect(0, 0, cv.width, cv.height);
+
+    // 透明度只分 4 档批量画，省掉逐点的 globalAlpha 切换
+    const buckets = [[], [], [], []];
+    const hot = [];
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const q = particles[i];
+      if (q.dead) { particles.splice(i, 1); continue; }
+      if (!reduce) {
+        const x = q.bx + q.ox, y = q.by + q.oy;
+        const dx = x - px, dy = y - py, d2 = dx * dx + dy * dy;
+        if (d2 < R2 && d2 > 0.01) {
+          // 推力按距离的平方衰减：圆心附近推得狠，边缘只是轻轻一拨，圈的轮廓才是软的
+          const d = Math.sqrt(d2), f = (1 - d / R) ** 2 * F;
+          q.vx += dx / d * f; q.vy += dy / d * f;
+        }
+        // 弹簧把偏移拉回 0，摩擦负责收敛；k 越大回得越快越「硬」
+        q.vx = (q.vx - q.ox * k) * fr;
+        q.vy = (q.vy - q.oy * k) * fr;
+        q.ox += q.vx; q.oy += q.vy;
+      }
+      if (q.a <= 0.02) continue;
+      const b = Math.min(3, (q.a * 4) | 0);
+      buckets[b].push(q);
+      // 被推得远的粒子单独记下来，后面给它们提亮，散开的那一圈会有一点火花感
+      if (q.ox * q.ox + q.oy * q.oy > 64) hot.push(q);
+    }
+
+    buckets.forEach((list, b) => {
+      if (!list.length) return;
+      ctx.globalAlpha = b === 3 ? 1 : (b + 0.5) / 4;
+      ctx.beginPath();
+      for (const q of list) {
+        const sz = base * q.s;
+        ctx.rect((q.bx + q.ox) * dpr - sz / 2, (q.by + q.oy) * dpr - sz / 2, sz, sz);
+      }
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-in';
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, cv.width, cv.height);
+
+    if (hot.length) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = 'rgba(230,255,244,.55)';
+      ctx.beginPath();
+      for (const q of hot) {
+        const sz = base * q.s * 0.9;
+        ctx.rect((q.bx + q.ox) * dpr - sz / 2, (q.by + q.oy) * dpr - sz / 2, sz, sz);
+      }
+      ctx.fill();
+    }
+  }
+
+  // ---------- 尺寸：画布按 dpr 放大，逻辑坐标始终用 CSS 像素 ----------
+  function resize() {
+    const r = cv.getBoundingClientRect();
+    W = Math.round(r.width); H = Math.round(r.height);
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    cv.width = W * dpr; cv.height = H * dpr;
+    grad = ctx.createLinearGradient(0, 0, cv.width, cv.height * 0.4);
+    grad.addColorStop(0, '#58e6a8');
+    grad.addColorStop(0.55, '#4fd1c5');
+    grad.addColorStop(1, '#3b82f6');
+  }
+
+  // ---------- 指针：鼠标和触摸统一走 Pointer Events ----------
+  function toLocal(e) {
+    const r = cv.getBoundingClientRect();
+    pointer.x = e.clientX - r.left; pointer.y = e.clientY - r.top;
+  }
+  let tipHidden = false;
+  cv.addEventListener('pointermove', e => {
+    toLocal(e);
+    if (!tipHidden) { tipHidden = true; tip.style.opacity = 0; }
+  });
+  cv.addEventListener('pointerdown', e => { toLocal(e); });
+  // 指针离开就把它挪到远处，粒子自然被弹簧拉回原位
+  ['pointerleave', 'pointerup', 'pointercancel'].forEach(t =>
+    cv.addEventListener(t, () => { pointer.x = pointer.y = -9999; }));
+
+  // ---------- 控件 ----------
+  const words = document.getElementById('words');
+  const custom = document.getElementById('custom');
+  function markOn(btn) {
+    words.querySelectorAll('.opt').forEach(b => b.classList.toggle('on', b === btn));
+  }
+  words.addEventListener('click', e => {
+    const btn = e.target.closest('.opt');
+    if (!btn) return;
+    markOn(btn);
+    custom.value = '';
+    setWord(btn.dataset.w);
+  });
+  // 输入时防抖 400ms 再重组，不然每敲一个字母粒子就飞一次，反而看不清
+  let typeTimer;
+  custom.addEventListener('input', () => {
+    clearTimeout(typeTimer);
+    typeTimer = setTimeout(() => {
+      const v = custom.value.trim();
+      if (!v) return;
+      markOn(null);
+      setWord(v);
+    }, 400);
+  });
+  custom.addEventListener('keydown', e => { if (e.key === 'Enter') custom.blur(); });
+
+  const radius = document.getElementById('radius');
+  radius.addEventListener('input', () => {
+    cfg.radius = +radius.value;
+    document.getElementById('rVal').textContent = cfg.radius + 'px';
+  });
+  const spring = document.getElementById('spring');
+  spring.addEventListener('input', () => {
+    cfg.spring = +spring.value;
+    // 弹簧越软，摩擦就给得越少，软的时候能多晃几下，像果冻；硬的时候干脆利落
+    cfg.friction = gsap.utils.mapRange(0.01, 0.2, 0.9, 0.78, cfg.spring);
+    document.getElementById('kVal').textContent = cfg.spring.toFixed(2);
+  });
+  document.getElementById('replay').addEventListener('click', explode);
+
+  // 尺寸变化后重新取点：粒子从旧布局飞到新布局，比直接跳过去自然
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      const oldW = W;
+      resize();
+      if (W !== oldW) setWord(word);
+    }, 200);
+  });
+
+  if (reduce) {
+    tip.textContent = '已开启「减少动态」，这里只显示静态粒子字';
+  }
+
+  resize();
+  setWord(word, { intro: true });
+  gsap.ticker.add(tick);
+</script>
+
+<!-- 图鉴浮条：返回图鉴 + 把这个 demo 的链接和提示词复制给 AI Agent -->
+<div id="galleryBar">
+  <a href="/" class="gb">← 图鉴</a>
+  <button class="gb" id="gbCopy">⧉ 复制给 AI</button>
+</div>
+<style>
+  #galleryBar {
+    position: fixed; left: 16px; bottom: 16px; z-index: 9999;
+    display: flex; gap: 8px; font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+  }
+  #galleryBar .gb {
+    font-size: 12px; line-height: 1; padding: 8px 12px; border-radius: 8px; cursor: pointer;
+    color: #8b949e; background: rgba(22,27,34,.92); border: 1px solid #30363d;
+    text-decoration: none; backdrop-filter: blur(8px); font-family: inherit;
+    transition: color .16s, border-color .16s;
+  }
+  #galleryBar .gb:hover { color: #58e6a8; border-color: #58e6a8; }
+  #galleryBar .gb.done { color: #58e6a8; border-color: rgba(88,230,168,.6); }
+  @media (max-width: 520px) { #galleryBar { left: 10px; bottom: 10px; } }
+</style>
+<script>
+  (function () {
+    var DEMO = 'particle-text', TITLE = '粒子文字';
+    var origin = location.protocol.startsWith('http') ? location.origin : 'https://gsap.leolee0812.site';
+    var text = '参考这个页面：' + origin + '/demos/' + DEMO + '.html\n' +
+      '它用 GSAP 3.13 实现了「' + TITLE + '」，源码里有完整可运行的实现和中文注释。\n' +
+      '请先读取这个链接，弄清它的实现方式（用到哪些插件、时间轴怎么排、缓动怎么选），\n' +
+      '然后把同样的效果复刻到我的项目里：沿用我现有的页面结构和配色，保持一致的节奏和手感。';
+    var btn = document.getElementById('gbCopy');
+    btn.addEventListener('click', function () {
+      var done = function () {
+        btn.textContent = '✓ 已复制，粘给你的 Agent';
+        btn.classList.add('done');
+        clearTimeout(btn._t);
+        btn._t = setTimeout(function () {
+          btn.textContent = '⧉ 复制给 AI';
+          btn.classList.remove('done');
+        }, 2200);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, done);
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+        done();
+      }
+    });
+  })();
+</script>
+</body>
+</html>
