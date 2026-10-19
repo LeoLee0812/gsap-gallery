@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1117'/%3E%3Cpath d='M9 22c3-9 8-13 14-12' stroke='%2358e6a8' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='23' cy='10' r='3' fill='%233b82f6'/%3E%3C/svg%3E">
+<title>果冻按钮</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+    min-height: 100vh; padding: 40px 20px 80px;
+    display: flex; flex-direction: column; align-items: center; gap: 22px;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .sub { font-size: 14px; opacity: .55; margin-top: -12px; text-align: center; line-height: 1.6; }
+
+  /* 舞台：上半部分放按钮，下半部分是实时波形，按钮怎么晃一眼就能对上曲线 */
+  .stage {
+    position: relative; width: 100%; max-width: 960px;
+    background:
+      radial-gradient(ellipse at 50% 38%, rgba(88,230,168,.08), transparent 60%),
+      radial-gradient(circle, rgba(255,255,255,.035) 1px, transparent 1.5px) 0 0 / 22px 22px,
+      #161b22;
+    border: 1px solid #30363d; border-radius: 16px; overflow: hidden;
+  }
+  .pad {
+    display: flex; flex-direction: column; align-items: center; gap: 40px;
+    padding: 64px 20px 44px;
+  }
+  .icons { display: flex; gap: 22px; }
+
+  /* 按钮本身不做变换，只当点击区域；真正挤压的是里面的 .body。
+     这样按钮被压扁时可点区域不会跟着缩，手指压在边缘也不会「滑出去」 */
+  .jelly {
+    position: relative; display: block; border: 0; background: none; padding: 0;
+    font: inherit; color: inherit; cursor: pointer;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  }
+  .jelly:focus { outline: none; }
+  .jelly:focus-visible .body { box-shadow: 0 0 0 3px #0d1117, 0 0 0 5px #3b82f6; }
+  /* 变形原点放在偏下的位置：按下时像一团果冻坐在桌面上被压扁，而不是悬空缩小 */
+  .body {
+    position: relative; display: flex; align-items: center; justify-content: center;
+    transform-origin: 50% 85%; will-change: transform;
+  }
+  .label { display: inline-flex; align-items: center; gap: 8px; pointer-events: none; }
+  /* 落地阴影单独一层：被压扁时阴影变宽变实，弹起时变窄变淡，比 box-shadow 更有「离地」感 */
+  .shadow {
+    position: absolute; left: 12%; right: 12%; bottom: -10px; height: 18px;
+    border-radius: 50%; filter: blur(9px); pointer-events: none;
+  }
+
+  .main .body {
+    width: 232px; height: 72px; border-radius: 36px;
+    background: linear-gradient(180deg, #7cf3c1 0%, #58e6a8 48%, #3cc98f 100%);
+    color: #0b2a1d; font-size: 19px; font-weight: 700; letter-spacing: 1px;
+    box-shadow: inset 0 -5px 0 rgba(0,0,0,.12), inset 0 2px 0 rgba(255,255,255,.45);
+  }
+  /* 顶部一条高光，挤压时会跟着被压扁，果冻的「水润」感主要靠它 */
+  .main .body::before {
+    content: ''; position: absolute; left: 18%; right: 18%; top: 7px; height: 14px;
+    border-radius: 50%; background: rgba(255,255,255,.38); filter: blur(2px);
+  }
+  .main .shadow { background: rgba(88,230,168,.45); }
+
+  .icon .body {
+    width: 64px; height: 64px; border-radius: 50%;
+    background: linear-gradient(180deg, #232b36, #1a2029);
+    border: 1px solid #30363d;
+    box-shadow: inset 0 2px 0 rgba(255,255,255,.06);
+    transition: background .3s, border-color .3s;
+  }
+  .icon svg { width: 26px; height: 26px; fill: none; stroke: #8b949e; stroke-width: 2;
+    stroke-linecap: round; stroke-linejoin: round; transition: fill .3s, stroke .3s; }
+  .icon .shadow { background: rgba(0,0,0,.55); left: 18%; right: 18%; }
+  .icon.on .body { background: linear-gradient(180deg, #1d3a30, #15291f); border-color: rgba(88,230,168,.55); }
+  .icon.on svg { stroke: #58e6a8; fill: rgba(88,230,168,.85); }
+  .icon.on[data-k="heart"] .body { background: linear-gradient(180deg, #3d2030, #2a1620); border-color: rgba(255,122,168,.55); }
+  .icon.on[data-k="heart"] svg { stroke: #ff7aa8; fill: #ff7aa8; }
+  .icon.on[data-k="plus"] svg { fill: none; }
+
+  .tip { font-size: 12px; color: #8b949e; letter-spacing: .5px; text-align: center; margin-top: -14px; }
+
+  .wave-wrap { border-top: 1px solid #30363d; padding: 12px 18px 14px; background: rgba(13,17,23,.45); }
+  .legend { display: flex; gap: 16px; align-items: center; font-size: 12px; color: #8b949e; margin-bottom: 6px; flex-wrap: wrap; }
+  .legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+  .legend .ease { margin-left: auto; color: #58e6a8; font-family: ui-monospace, Menlo, monospace; }
+  #wave { display: block; width: 100%; height: 86px; }
+
+  .panel {
+    display: flex; gap: 22px 28px; flex-wrap: wrap; justify-content: center; align-items: flex-end;
+    background: #161b22; border: 1px solid #30363d; border-radius: 14px;
+    padding: 16px 22px; max-width: 960px; width: 100%;
+  }
+  .ctrl { display: flex; flex-direction: column; gap: 7px; }
+  .ctrl label { font-size: 12px; opacity: .6; }
+  .ctrl .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .opt {
+    background: #0d1117; color: #8b949e; border: 1px solid #30363d;
+    border-radius: 7px; padding: 6px 12px; font-size: 13px;
+    font-family: inherit; cursor: pointer; transition: all .16s;
+  }
+  .opt:hover { border-color: #58e6a8; color: #e6edf3; }
+  .opt.on { background: #58e6a8; color: #0d1117; border-color: #58e6a8; font-weight: 600; }
+  input[type=range] { width: 160px; accent-color: #58e6a8; }
+  .val { font-size: 12px; color: #58e6a8; font-family: ui-monospace, Menlo, monospace; }
+  .replay {
+    background: #58e6a8; color: #0d1117; border: 0; border-radius: 24px;
+    padding: 10px 26px; font-size: 14px; font-weight: 600; cursor: pointer;
+    font-family: inherit; transition: transform .16s, box-shadow .16s;
+  }
+  .replay:hover { box-shadow: 0 0 22px rgba(88,230,168,.4); }
+  .replay:active { transform: scale(.96); }
+
+  .note { font-size: 12px; color: #6e7681; text-align: center; max-width: 600px; line-height: 1.7; }
+  .note code { color: #58e6a8; font-family: ui-monospace, Menlo, monospace; }
+
+  @media (max-width: 520px) {
+    body { padding: 28px 14px 72px; gap: 18px; }
+    .pad { padding: 48px 12px 36px; gap: 34px; }
+    .main .body { width: 208px; height: 66px; font-size: 18px; }
+    .icons { gap: 18px; }
+    .icon .body { width: 58px; height: 58px; }
+    .wave-wrap { padding: 10px 12px 12px; }
+    .legend .ease { margin-left: 0; width: 100%; }
+    .panel { padding: 14px 16px; gap: 16px 20px; justify-content: flex-start; }
+    input[type=range] { width: 140px; }
+  }
+</style>
+</head>
+<body>
+  <h1>果冻按钮</h1>
+  <p class="sub">按下时被压扁、按住越压越深，松手后像果冻一样弹回去晃几下</p>
+
+  <div class="stage">
+    <div class="pad">
+      <button class="jelly main" data-k="main" aria-label="果冻按钮">
+        <span class="shadow"></span>
+        <span class="body"><span class="label">按住我 · 再松手</span></span>
+      </button>
+      <div class="icons">
+        <button class="jelly icon" data-k="heart" aria-label="喜欢" aria-pressed="false">
+          <span class="shadow"></span>
+          <span class="body"><span class="label"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg></span></span>
+        </button>
+        <button class="jelly icon" data-k="star" aria-label="收藏" aria-pressed="false">
+          <span class="shadow"></span>
+          <span class="body"><span class="label"><svg viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg></span></span>
+        </button>
+        <button class="jelly icon" data-k="plus" aria-label="添加" aria-pressed="false">
+          <span class="shadow"></span>
+          <span class="body"><span class="label"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span></span>
+        </button>
+      </div>
+      <p class="tip" id="tip">按住久一点，松手时弹得更狠</p>
+    </div>
+    <div class="wave-wrap">
+      <div class="legend">
+        <span><i style="background:#58e6a8"></i>scaleY</span>
+        <span><i style="background:#3b82f6"></i>scaleX</span>
+        <span class="ease" id="easeLbl">elastic.out(1, 0.38) · 1.15s</span>
+      </div>
+      <canvas id="wave"></canvas>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="ctrl">
+      <label>软硬度（松手回弹的缓动）</label>
+      <div class="row" id="presets">
+        <button class="opt" data-p="soft">软糯</button>
+        <button class="opt on" data-p="q">Q 弹</button>
+        <button class="opt" data-p="hard">硬朗</button>
+      </div>
+    </div>
+    <div class="ctrl">
+      <label>挤压深度 <span class="val" id="dVal">18%</span></label>
+      <input type="range" id="depth" min="0.06" max="0.32" step="0.01" value="0.18">
+    </div>
+    <button class="replay" id="replay">▶ 演示一遍</button>
+  </div>
+
+  <p class="note">
+    按下是两段：先 0.16s 快速压扁，再用 <code>sine.out</code> 慢慢往下陷；松手统一交给 <code>elastic.out</code>。
+    回弹幅度取决于松手那一刻被压了多深，所以按得越久弹得越狠。里面的文字和图标晚半拍回弹，晃动才有层次。
+  </p>
+
+<script src="../lib/gsap.min.js"></script>
+<script>
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // 三档软硬度：周期 period 越小晃得越多，挤压倍数和时长一起配，
+  // 「软」是压得深、晃得久，「硬」是压得浅、一下就回位，三档之间的差别要一眼看得出来
+  const PRESETS = {
+    soft: { ease: 'elastic.out(1.15, 0.26)', dur: 1.8, squash: 1.3, lag: 0.08 },
+    q:    { ease: 'elastic.out(1, 0.38)',    dur: 1.15, squash: 1,  lag: 0.05 },
+    hard: { ease: 'elastic.out(1, 0.75)',    dur: 0.55, squash: 0.6, lag: 0.025 }
+  };
+  const cfg = { p: PRESETS.q, depth: 0.18 };
+
+  // ---------- 每个按钮包成一个对象，记住它的部件和按下状态 ----------
+  const jellies = [...document.querySelectorAll('.jelly')].map(el => ({
+    el, k: el.dataset.k,
+    body: el.querySelector('.body'),
+    label: el.querySelector('.label'),
+    shadow: el.querySelector('.shadow'),
+    down: false, hold: null
+  }));
+  let tracked = jellies[0]; // 波形图显示的是最近按过的那一个
+
+  function press(j, lean = 0) {
+    if (j.down) return;
+    j.down = true; tracked = j;
+    const s = cfg.depth * cfg.p.squash;
+    gsap.killTweensOf([j.body, j.label, j.shadow]);
+
+    if (reduce) {
+      // 减少动态：只留一个极短的下沉反馈，确认「按到了」就够
+      gsap.to(j.body, { scale: 0.96, duration: 0.08 });
+      return;
+    }
+    // 横向只补回大约六成的体积：按钮本来就扁，横向撑太宽反而像被拉长的面条
+    j.hold = gsap.timeline()
+      .to(j.body, { scaleX: 1 + s * 0.6, scaleY: 1 - s, rotation: lean * 3, y: 2,
+                    duration: 0.16, ease: 'power3.out' })
+      // 按住不放时继续往下陷，但用 sine.out 越陷越慢，不会一直压到底
+      .to(j.body, { scaleX: 1 + s * 0.85, scaleY: 1 - s * 1.45, duration: 0.9, ease: 'sine.out' });
+    // 内容比外壳多沉一点：像软糖里包着的东西，被压时往下坠
+    gsap.to(j.label, { y: 3, scaleY: 1 - s * 0.35, duration: 0.2, ease: 'power2.out' });
+    gsap.to(j.shadow, { scaleX: 1 + s * 1.2, opacity: 1, y: -3, duration: 0.18, ease: 'power2.out' });
+  }
+
+  function release(j, activate = true) {
+    if (!j.down) return;
+    j.down = false;
+    if (j.hold) { j.hold.kill(); j.hold = null; }
+    const p = cfg.p;
+
+    if (reduce) {
+      gsap.to(j.body, { scale: 1, duration: 0.12 });
+    } else {
+      // 外壳从「当前被压的状态」弹回 1：elastic 的过冲和起点离 1 的距离成正比，
+      // scaleX 在 1 之上、scaleY 在 1 之下，同一条缓动自然就是一胖一瘦交替，正是果冻的样子
+      gsap.to(j.body, { scaleX: 1, scaleY: 1, rotation: 0, y: 0, duration: p.dur, ease: p.ease, overwrite: true });
+      // 内容晚半拍、周期稍长地回弹，和外壳错开相位，晃动才有「里外两层」的层次
+      gsap.to(j.label, { y: 0, scaleY: 1, duration: p.dur * 1.15, ease: p.ease, delay: p.lag, overwrite: true });
+      gsap.to(j.shadow, { scaleX: 1, opacity: 0.7, y: 0, duration: p.dur * 0.8, ease: p.ease, overwrite: true });
+    }
+    if (activate && j.k !== 'main') {
+      // activate === 'on' 是演示用的：不管之前什么状态都点亮，重复演示不会把图标关掉
+      const on = j.el.classList.toggle('on', activate === 'on' ? true : undefined);
+      j.el.setAttribute('aria-pressed', on);
+    }
+  }
+
+  // ---------- 指针：鼠标和触摸统一走 Pointer Events ----------
+  jellies.forEach(j => {
+    gsap.set(j.shadow, { opacity: 0.7 });
+    j.el.addEventListener('pointerdown', e => {
+      if (e.button > 0) return;
+      // 抓住指针：手指压着滑出按钮再松开，也能收到 pointerup，按钮不会卡在压扁状态
+      j.el.setPointerCapture(e.pointerId);
+      const r = j.el.getBoundingClientRect();
+      // 按在左边就往左歪一点、按在右边往右歪，同一个按钮按不同位置手感不同
+      const lean = gsap.utils.clamp(-1, 1, (e.clientX - r.left) / r.width * 2 - 1);
+      press(j, lean);
+      hideTip();
+    });
+    j.el.addEventListener('pointerup', e => {
+      const r = j.el.getBoundingClientRect();
+      // 滑出按钮再松手算「取消」：照样弹回去，但不触发切换，和原生按钮的习惯一致
+      const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+      release(j, inside);
+    });
+    j.el.addEventListener('pointercancel', () => release(j, false));
+    j.el.addEventListener('lostpointercapture', () => release(j, false));
+    // 键盘也能玩：空格 / 回车按下就压扁，抬起才弹回
+    j.el.addEventListener('keydown', e => {
+      if (e.key !== ' ' && e.key !== 'Enter') return;
+      e.preventDefault();
+      if (!e.repeat) press(j, 0);
+    });
+    j.el.addEventListener('keyup', e => {
+      if (e.key === ' ' || e.key === 'Enter') release(j, true);
+    });
+    j.el.addEventListener('blur', () => release(j, false));
+    // 移动端长按会弹出系统菜单，按住不放是这个 demo 的核心玩法，必须拦掉
+    j.el.addEventListener('contextmenu', e => e.preventDefault());
+  });
+
+  const tip = document.getElementById('tip');
+  let tipHidden = false;
+  function hideTip() {
+    if (tipHidden) return;
+    tipHidden = true;
+    gsap.to(tip, { opacity: 0.35, duration: 0.6 });
+  }
+
+  // ---------- 波形：每帧采样一次 scaleX / scaleY，从右往左滚动 ----------
+  const wave = document.getElementById('wave');
+  const wctx = wave.getContext('2d');
+  const N = 200; // 约 3.3 秒的历史，够看完「软糯」一整次回弹
+  const histX = new Array(N).fill(1), histY = new Array(N).fill(1);
+  let WW = 0, WH = 0, dpr = 1;
+
+  function sizeWave() {
+    const r = wave.getBoundingClientRect();
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    WW = r.width; WH = r.height;
+    wave.width = Math.round(WW * dpr); wave.height = Math.round(WH * dpr);
+  }
+
+  function drawWave() {
+    histX.push(+gsap.getProperty(tracked.body, 'scaleX'));
+    histY.push(+gsap.getProperty(tracked.body, 'scaleY'));
+    histX.shift(); histY.shift();
+
+    const c = wctx;
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.globalCompositeOperation = 'source-over';
+    c.clearRect(0, 0, WW, WH);
+    // 纵轴固定显示 1 ± 0.5，三档软硬度画在同一把尺子上才有可比性
+    const mid = WH / 2, amp = (WH / 2 - 6) / 0.5;
+    const yOf = v => mid - gsap.utils.clamp(-0.5, 0.5, v - 1) * amp;
+
+    c.strokeStyle = 'rgba(139,148,158,.28)';
+    c.lineWidth = 1;
+    c.setLineDash([3, 5]);
+    c.beginPath(); c.moveTo(0, mid); c.lineTo(WW, mid); c.stroke();
+    c.setLineDash([]);
+
+    const line = (hist, color, w) => {
+      c.strokeStyle = color; c.lineWidth = w; c.lineJoin = 'round';
+      c.beginPath();
+      for (let i = 0; i < N; i++) {
+        const x = i / (N - 1) * WW, y = yOf(hist[i]);
+        i ? c.lineTo(x, y) : c.moveTo(x, y);
+      }
+      c.stroke();
+    };
+    line(histX, 'rgba(59,130,246,.85)', 1.5);
+    line(histY, '#58e6a8', 2);
+
+    // 最右端画个亮点表示「现在」，左边渐隐，读起来像示波器
+    c.fillStyle = '#58e6a8';
+    c.beginPath(); c.arc(WW - 2, yOf(histY[N - 1]), 3, 0, Math.PI * 2); c.fill();
+    c.globalCompositeOperation = 'destination-out';
+    const g = c.createLinearGradient(0, 0, WW * 0.22, 0);
+    g.addColorStop(0, 'rgba(0,0,0,1)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = g;
+    c.fillRect(0, 0, WW * 0.22, WH);
+  }
+
+  // ---------- 演示：大按钮按住一会儿再松，三个小按钮接力 ----------
+  let demo;
+  function runDemo() {
+    if (demo) demo.kill();
+    jellies.forEach(j => release(j, false));
+    const [main, ...icons] = jellies;
+    demo = gsap.timeline()
+      .call(() => press(main, 0.35))
+      .call(() => release(main, false), null, 0.55)
+      .call(() => press(icons[0], 0), null, 1.25)
+      .call(() => release(icons[0], 'on'), null, 1.4)
+      .call(() => press(icons[1], 0), null, 1.5)
+      .call(() => release(icons[1], 'on'), null, 1.65)
+      .call(() => press(icons[2], 0), null, 1.75)
+      .call(() => release(icons[2], 'on'), null, 1.9);
+  }
+
+  // ---------- 控件 ----------
+  const easeLbl = document.getElementById('easeLbl');
+  function showEase() { easeLbl.textContent = `${cfg.p.ease} · ${cfg.p.dur}s`; }
+  const presets = document.getElementById('presets');
+  presets.addEventListener('click', e => {
+    const btn = e.target.closest('.opt');
+    if (!btn) return;
+    presets.querySelectorAll('.opt').forEach(b => b.classList.toggle('on', b === btn));
+    cfg.p = PRESETS[btn.dataset.p];
+    showEase();
+    // 换档后马上按一下大按钮，不用自己去试就能看到区别
+    const main = jellies[0];
+    press(main, 0);
+    gsap.delayedCall(0.3, () => release(main, false));
+  });
+  const depth = document.getElementById('depth');
+  depth.addEventListener('input', () => {
+    cfg.depth = +depth.value;
+    document.getElementById('dVal').textContent = Math.round(cfg.depth * 100) + '%';
+  });
+  document.getElementById('replay').addEventListener('click', runDemo);
+
+  window.addEventListener('resize', sizeWave);
+  sizeWave();
+  gsap.ticker.add(drawWave);
+
+  if (reduce) {
+    tip.textContent = '已开启「减少动态」，按钮只保留轻微的按下反馈';
+  } else {
+    // 入场本身也是一次果冻：从压扁状态弹出来，顺手告诉用户「这东西是软的」
+    gsap.from(jellies.map(j => j.body), {
+      scaleX: 1.35, scaleY: 0.4, opacity: 0, y: 10, duration: 1.2,
+      ease: 'elastic.out(1, 0.4)', stagger: 0.09, delay: 0.15
+    });
+    gsap.delayedCall(1.4, runDemo);
+  }
+</script>
+
+<!-- 图鉴浮条：返回图鉴 + 把这个 demo 的链接和提示词复制给 AI Agent -->
+<div id="galleryBar">
+  <a href="/" class="gb">← 图鉴</a>
+  <button class="gb" id="gbCopy">⧉ 复制给 AI</button>
+</div>
+<style>
+  #galleryBar {
+    position: fixed; left: 16px; bottom: 16px; z-index: 9999;
+    display: flex; gap: 8px; font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+  }
+  #galleryBar .gb {
+    font-size: 12px; line-height: 1; padding: 8px 12px; border-radius: 8px; cursor: pointer;
+    color: #8b949e; background: rgba(22,27,34,.92); border: 1px solid #30363d;
+    text-decoration: none; backdrop-filter: blur(8px); font-family: inherit;
+    transition: color .16s, border-color .16s;
+  }
+  #galleryBar .gb:hover { color: #58e6a8; border-color: #58e6a8; }
+  #galleryBar .gb.done { color: #58e6a8; border-color: rgba(88,230,168,.6); }
+  @media (max-width: 520px) { #galleryBar { left: 10px; bottom: 10px; } }
+</style>
+<script>
+  (function () {
+    var DEMO = 'jelly-button', TITLE = '果冻按钮';
+    var origin = location.protocol.startsWith('http') ? location.origin : 'https://gsap.leolee0812.site';
+    var text = '参考这个页面：' + origin + '/demos/' + DEMO + '.html\n' +
+      '它用 GSAP 3.13 实现了「' + TITLE + '」，源码里有完整可运行的实现和中文注释。\n' +
+      '请先读取这个链接，弄清它的实现方式（用到哪些插件、时间轴怎么排、缓动怎么选），\n' +
+      '然后把同样的效果复刻到我的项目里：沿用我现有的页面结构和配色，保持一致的节奏和手感。';
+    var btn = document.getElementById('gbCopy');
+    btn.addEventListener('click', function () {
+      var done = function () {
+        btn.textContent = '✓ 已复制，粘给你的 Agent';
+        btn.classList.add('done');
+        clearTimeout(btn._t);
+        btn._t = setTimeout(function () {
+          btn.textContent = '⧉ 复制给 AI';
+          btn.classList.remove('done');
+        }, 2200);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, done);
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+        done();
+      }
+    });
+  })();
+</script>
+</body>
+</html>
