@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1117'/%3E%3Cpath d='M9 22c3-9 8-13 14-12' stroke='%2358e6a8' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='23' cy='10' r='3' fill='%233b82f6'/%3E%3C/svg%3E">
+<title>滚动缩放 Hero</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* 首屏：被 pin 住的那一段。svh 让手机地址栏收起时高度不跳 */
+  .hero { position: relative; height: 100vh; height: 100svh; overflow: hidden; }
+  /* 卡片缩小后露出来的底：一层很淡的点阵，告诉用户「图片底下还有页面」 */
+  .hero::before {
+    content: ''; position: absolute; inset: 0;
+    background:
+      radial-gradient(ellipse at 50% 45%, rgba(59,130,246,.08), transparent 60%),
+      radial-gradient(circle, rgba(255,255,255,.045) 1px, transparent 1.5px) 0 0 / 22px 22px;
+  }
+
+  /* 图片层始终铺满整屏，只靠 clip-path 裁出卡片形状：
+     不动 width/height 就不会触发重排，滚动时每帧只是合成层在变 */
+  .media { position: absolute; inset: 0; will-change: clip-path; }
+  .zoom { position: absolute; inset: 0; will-change: transform; }
+  .zoom svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  /* 卡片边缘的一圈细描边和暗角，跟着 clip-path 一起被裁，所以描边永远贴着卡片 */
+  .media::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at 50% 40%, transparent 55%, rgba(5,8,14,.55));
+  }
+
+  .copy {
+    position: absolute; inset: 0; z-index: 2;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 0 24px 14vh; pointer-events: none;
+  }
+  .eyebrow {
+    font-size: 12px; letter-spacing: .14em; color: #58e6a8;
+    padding: 6px 12px; border: 1px solid rgba(88,230,168,.35); border-radius: 999px;
+    background: rgba(13,17,23,.35); backdrop-filter: blur(6px);
+  }
+  h1 {
+    margin-top: 22px; font-size: clamp(42px, 8.4vw, 112px); font-weight: 800;
+    letter-spacing: -.02em; line-height: 1.02;
+    text-shadow: 0 6px 40px rgba(5,10,25,.55);
+  }
+  h1 .line { display: block; }
+  h1 em { font-style: normal; color: #58e6a8; }
+  .sub {
+    margin-top: 20px; max-width: 520px; font-size: clamp(14px, 1.6vw, 17px);
+    line-height: 1.7; color: rgba(230,237,243,.82); text-shadow: 0 2px 14px rgba(5,10,25,.8);
+  }
+
+  .hint {
+    position: absolute; left: 50%; bottom: 34px; z-index: 2; transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    font-size: 12px; letter-spacing: .2em; color: rgba(230,237,243,.7); pointer-events: none;
+  }
+  .hint i { display: block; width: 1px; height: 38px; background: linear-gradient(#e6edf3, transparent); transform-origin: top; }
+
+  /* 卡片落定后在它下方出现的说明行，位置和宽度每帧跟着卡片算 */
+  .caption {
+    position: absolute; left: 0; top: 0; z-index: 2; opacity: 0;
+    display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+    font-size: 13px; color: #8b949e;
+  }
+  .caption b { color: #e6edf3; font-size: 15px; font-weight: 600; }
+  .caption .meta { font-family: ui-monospace, Menlo, monospace; font-size: 12px; white-space: nowrap; }
+  .caption .meta span { color: #58e6a8; }
+
+  /* 参数面板：桌面横排一条，手机收成两个按钮，点「参数」才展开滑块 */
+  .panel {
+    position: fixed; top: 14px; right: 14px; z-index: 20;
+    display: flex; align-items: center; gap: 18px;
+    background: rgba(22,27,34,.86); border: 1px solid #30363d; border-radius: 14px;
+    padding: 10px 12px 10px 16px; backdrop-filter: blur(10px);
+    box-shadow: 0 10px 30px rgba(0,0,0,.35);
+  }
+  .panel .body { display: flex; align-items: center; gap: 18px; }
+  .ctrl { display: flex; flex-direction: column; gap: 4px; }
+  .ctrl label { font-size: 12px; color: #8b949e; display: flex; justify-content: space-between; gap: 10px; }
+  .val, .prog b { color: #58e6a8; font-family: ui-monospace, Menlo, monospace; font-size: 12px; font-weight: 500; }
+  input[type=range] { width: 130px; accent-color: #58e6a8; }
+  .prog { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #8b949e; min-width: 60px; }
+  .prog .bar { height: 3px; border-radius: 2px; background: #30363d; overflow: hidden; }
+  .prog .bar i { display: block; height: 100%; background: #58e6a8; transform-origin: left; transform: scaleX(0); }
+  .head { display: flex; gap: 8px; }
+  .btn {
+    background: #58e6a8; color: #0d1117; border: 0; border-radius: 20px;
+    padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+    font-family: inherit; transition: transform .16s, box-shadow .16s;
+  }
+  .btn:hover { box-shadow: 0 0 20px rgba(88,230,168,.4); }
+  .btn:active { transform: scale(.96); }
+  .btn.ghost { background: #0d1117; color: #8b949e; border: 1px solid #30363d; display: none; }
+  .btn.ghost.on { color: #58e6a8; border-color: #58e6a8; }
+
+  /* 首屏之后的正文：卡片落定后页面自然接下去 */
+  .after { position: relative; max-width: 960px; margin: 0 auto; padding: 12vh 20px 22vh; }
+  .after h2 { font-size: clamp(22px, 3vw, 30px); font-weight: 700; }
+  .after h2 span { color: #58e6a8; }
+  .after > p { margin-top: 10px; color: #8b949e; font-size: 15px; line-height: 1.7; max-width: 620px; }
+  .grid { margin-top: 32px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .tip {
+    background: #161b22; border: 1px solid #30363d; border-radius: 14px; padding: 20px;
+  }
+  .tip .n { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: #3b82f6; }
+  .tip h3 { margin-top: 8px; font-size: 16px; }
+  .tip p { margin-top: 8px; font-size: 13px; line-height: 1.75; color: #8b949e; }
+  .tip code, .after code { color: #58e6a8; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+
+  @media (max-width: 760px) {
+    .panel { top: 10px; right: 10px; flex-wrap: wrap; gap: 10px; padding: 8px 8px 8px 12px; justify-content: space-between; }
+    .panel .body { display: none; order: 3; width: 100%; flex-wrap: wrap; gap: 12px 18px; padding: 4px 4px 6px 0; }
+    .panel.open { left: 10px; }
+    .panel.open .body { display: flex; }
+    .panel .prog { flex-direction: row; align-items: center; gap: 8px; }
+    .panel .prog .bar { width: 80px; }
+    .btn.ghost { display: inline-block; }
+    .ctrl { flex: 1 1 140px; }
+    input[type=range] { width: 100%; }
+    .grid { grid-template-columns: 1fr; }
+    .hint { bottom: 76px; }
+    .caption { flex-direction: column; gap: 2px; }
+  }
+</style>
+</head>
+<body>
+  <div class="panel" id="panel">
+    <div class="body">
+      <div class="ctrl">
+        <label>scrub 阻尼 <span class="val" id="sVal">0.8s</span></label>
+        <input type="range" id="scrub" min="0" max="2.5" step="0.1" value="0.8" aria-label="scrub 阻尼">
+      </div>
+      <div class="ctrl">
+        <label>落点卡片宽 <span class="val" id="wVal">62%</span></label>
+        <input type="range" id="width" min="0.4" max="0.9" step="0.01" value="0.62" aria-label="落点卡片宽">
+      </div>
+      <div class="prog"><span>progress <b id="prog">0.00</b></span><span class="bar"><i id="bar"></i></span></div>
+    </div>
+    <div class="head">
+      <button class="btn ghost" id="toggle" aria-expanded="false">⚙ 参数</button>
+      <button class="btn" id="play">▶ 演示一遍</button>
+    </div>
+  </div>
+
+  <section class="hero" id="hero">
+    <div class="media" id="media">
+      <div class="zoom" id="zoom">
+        <svg id="art" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <defs>
+            <linearGradient id="gNight" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#070b1c"/>
+              <stop offset=".55" stop-color="#16244a"/>
+              <stop offset="1" stop-color="#2f4677"/>
+            </linearGradient>
+            <linearGradient id="gDawn" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#3b82f6" stop-opacity="0"/>
+              <stop offset=".4" stop-color="#7a6fc9" stop-opacity=".55"/>
+              <stop offset=".62" stop-color="#f0889a"/>
+              <stop offset=".78" stop-color="#ffc58a"/>
+            </linearGradient>
+            <radialGradient id="gSun">
+              <stop offset="0" stop-color="#fff6d8"/>
+              <stop offset=".7" stop-color="#ffd59a"/>
+              <stop offset="1" stop-color="#ffb877"/>
+            </radialGradient>
+            <radialGradient id="gHalo">
+              <stop offset="0" stop-color="#ffd8a0" stop-opacity=".7"/>
+              <stop offset="1" stop-color="#ffd8a0" stop-opacity="0"/>
+            </radialGradient>
+            <radialGradient id="gAurora">
+              <stop offset="0" stop-color="#58e6a8" stop-opacity=".5"/>
+              <stop offset=".6" stop-color="#3b82f6" stop-opacity=".16"/>
+              <stop offset="1" stop-color="#3b82f6" stop-opacity="0"/>
+            </radialGradient>
+            <linearGradient id="gMist" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#c9d6ff" stop-opacity="0"/>
+              <stop offset="1" stop-color="#c9d6ff" stop-opacity=".14"/>
+            </linearGradient>
+          </defs>
+          <rect width="1600" height="1000" fill="url(#gNight)"/>
+          <rect id="dawn" width="1600" height="1000" fill="url(#gDawn)" opacity="0"/>
+          <g id="aurora">
+            <ellipse cx="520" cy="250" rx="560" ry="90" fill="url(#gAurora)" transform="rotate(-12 520 250)"/>
+            <ellipse cx="1120" cy="200" rx="480" ry="70" fill="url(#gAurora)" transform="rotate(8 1120 200)"/>
+          </g>
+          <g id="stars"></g>
+          <g id="sun">
+            <circle cx="880" cy="720" r="300" fill="url(#gHalo)"/>
+            <circle cx="880" cy="720" r="74" fill="url(#gSun)"/>
+          </g>
+          <g id="ridges"></g>
+        </svg>
+      </div>
+    </div>
+
+    <div class="copy" id="copy">
+      <span class="eyebrow">ScrollTrigger · pin + scrub</span>
+      <h1><span class="line">滚动缩放</span><span class="line"><em>Hero</em></span></h1>
+      <p class="sub">往下滚，铺满整屏的首图会一路收成一张圆角卡片，画里的夜色同时亮成黎明。</p>
+    </div>
+    <div class="hint" id="hint">向下滚动<i></i></div>
+
+    <div class="caption" id="caption">
+      <b>山脊 · 黎明</b>
+      <span class="meta">clip-path inset + 反向 scale · <span>No.75</span></span>
+    </div>
+  </section>
+
+  <section class="after">
+    <h2>卡片落定，<span>页面接着往下走</span></h2>
+    <p>往回滚，卡片会原路放大回全屏。整段只用了一条 scrub 时间轴，进度完全交给滚动条，所以快慢、来回都由手指说了算。</p>
+    <div class="grid">
+      <div class="tip">
+        <span class="n">01</span>
+        <h3>裁，而不是缩</h3>
+        <p>图片层始终 100% 铺满，只把 <code>clip-path: inset()</code> 从 0 推到卡片边距。不碰宽高就没有重排，手机上也稳 60 帧。</p>
+      </div>
+      <div class="tip">
+        <span class="n">02</span>
+        <h3>画面同时后退</h3>
+        <p>只裁的话像在开窗。里面的画以卡片中心为原点同步缩到「刚好盖住卡片」，看起来才是整张图被收进去了。</p>
+      </div>
+      <div class="tip">
+        <span class="n">03</span>
+        <h3>景深各走各的</h3>
+        <p>前景山脊下沉得多、远山几乎不动，太阳升起、星星隐去。缩小时有层次，就不像一张平面贴图。</p>
+      </div>
+    </div>
+  </section>
+
+<script src="../lib/gsap.min.js"></script>
+<script src="../lib/ScrollTrigger.min.js"></script>
+<script src="../lib/ScrollToPlugin.min.js"></script>
+<script>
+  gsap.registerPlugin(ScrollTrigger, ScrollToPlugin);
+  // 手机地址栏收起/展开会改变 innerHeight，忽略这类 resize，否则 pin 会在滚动途中重算抖一下
+  ScrollTrigger.config({ ignoreMobileResize: true });
+
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const $ = id => document.getElementById(id);
+  const media = $('media'), zoom = $('zoom'), caption = $('caption');
+  const NS = 'http://www.w3.org/2000/svg';
+
+  // ---------- 现画一张风景：星空、极光、太阳、四层山脊 ----------
+  // 固定种子的伪随机，每次打开星星都在同一个位置，截图和录屏才对得上
+  let seed = 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const stars = $('stars');
+  for (let i = 0; i < 90; i++) {
+    const c = document.createElementNS(NS, 'circle');
+    c.setAttribute('cx', (rnd() * 1600).toFixed(1));
+    c.setAttribute('cy', (rnd() * 560).toFixed(1));
+    c.setAttribute('r', (0.6 + rnd() * 1.6).toFixed(2));
+    c.setAttribute('fill', '#fff');
+    c.setAttribute('opacity', (0.25 + rnd() * 0.7).toFixed(2));
+    stars.appendChild(c);
+  }
+
+  // 几条频率不同的正弦叠起来就是一条像样的山脊线，比手写 path 省地方，也方便调起伏
+  function ridge(base, amp, s) {
+    let d = 'M0 1000';
+    for (let x = 0; x <= 1600; x += 16) {
+      const n = 0.55 * Math.sin(x * 0.0042 + s) + 0.3 * Math.sin(x * 0.011 + s * 1.7) + 0.15 * Math.sin(x * 0.033 + s * 2.3);
+      d += `L${x} ${(base - amp * n).toFixed(1)}`;
+    }
+    return d + 'L1600 1000Z';
+  }
+  // drop：卡片收拢过程中这一层往下沉多少。越靠前沉得越多，视差就是这么来的
+  const LAYERS = [
+    { base: 610, amp: 95, s: 1.2, fill: '#34466f', drop: 8 },
+    { base: 690, amp: 80, s: 3.1, fill: '#243458', drop: 24, mist: true },
+    { base: 780, amp: 70, s: 5.4, fill: '#17233f', drop: 48, mist: true },
+    { base: 880, amp: 58, s: 0.4, fill: '#0b1428', drop: 84 }
+  ];
+  const ridges = $('ridges');
+  const layerEls = LAYERS.map(L => {
+    const g = document.createElementNS(NS, 'g');
+    if (L.mist) {
+      // 每层山前面垫一条薄雾，层与层之间才拉得开距离
+      const m = document.createElementNS(NS, 'rect');
+      m.setAttribute('y', L.base - 160); m.setAttribute('width', 1600); m.setAttribute('height', 260);
+      m.setAttribute('fill', 'url(#gMist)');
+      g.appendChild(m);
+    }
+    const p = document.createElementNS(NS, 'path');
+    p.setAttribute('d', ridge(L.base, L.amp, L.s));
+    p.setAttribute('fill', L.fill);
+    g.appendChild(p);
+    ridges.appendChild(g);
+    return g;
+  });
+
+  // ---------- 卡片几何：每帧按当前视口和滑块现算 ----------
+  const cfg = { scrub: 0.8, width: 0.62 };
+  function target() {
+    const vw = innerWidth, vh = innerHeight, mobile = vw < 600;
+    const w = Math.min(vw * (mobile ? Math.max(cfg.width, 0.8) : cfg.width), 980, vw - 32);
+    // 手机上做成竖卡，桌面上是 5:3 横卡；高度都给下方说明行留出位置
+    const h = mobile ? Math.min(vh * 0.52, w * 1.3) : Math.min(w * 0.6, vh * 0.6);
+    const top = (vh - h) / 2 - (mobile ? 10 : 24);
+    return { vw, vh, w, h, top, left: (vw - w) / 2 };
+  }
+
+  // 收拢进度 k 用一个代理对象来补间，clip-path 和反向缩放在 onUpdate 里由它统一算。
+  // 这样拖「卡片宽」滑块时不用重建 ScrollTrigger，当前帧就能用上新尺寸
+  const crop = { k: 0 };
+  function applyCrop() {
+    const k = crop.k, g = target();
+    const t = g.top * k, l = g.left * k, b = (g.vh - g.top - g.h) * k, r = 22 * k;
+    media.style.clipPath = `inset(${t}px ${l}px ${b}px ${l}px round ${r}px)`;
+    // 画面缩到「刚好盖住卡片」的比例，并以卡片中心为原点缩，卡片里看到的始终是整张画的中央
+    const cover = Math.max(g.w / g.vw, g.h / g.vh) * 1.04;
+    const s = 1 + (cover - 1) * k;
+    const cy = g.top + g.h / 2;
+    // 竖卡几乎没法再缩，画面只能往上提一点，把山脊多让一些进卡片；提多少以「底边不露出来」为限
+    const dy = g.vw < 600 ? -Math.max(0, Math.min(g.vh * 0.12, (g.vh - cy) * cover - g.h / 2 - 4)) * k : 0;
+    zoom.style.transformOrigin = `50% ${cy}px`;
+    zoom.style.transform = `translateY(${dy}px) scale(${s})`;
+    // 说明行用 left/top 定位，transform 留给时间轴做浮入，两边互不覆盖
+    caption.style.left = g.left + 'px';
+    caption.style.top = g.top + g.h + 16 + 'px';
+    caption.style.width = g.w + 'px';
+  }
+
+  // ---------- 主时间轴：一条 scrub 时间轴，进度全交给滚动条 ----------
+  let ctx, st;
+  const prog = $('prog'), bar = $('bar');
+  function build() {
+    if (ctx) ctx.revert();
+    ctx = gsap.context(() => {
+      const tl = gsap.timeline({
+        defaults: { ease: 'none' },
+        scrollTrigger: {
+          trigger: '#hero', start: 'top top', end: '+=160%',
+          pin: true, anticipatePin: 1,
+          // 0 当成 true：完全跟手；大于 0 则是追上滚动条所用的秒数，越大越「拖」
+          scrub: cfg.scrub || true,
+          invalidateOnRefresh: true,
+          onUpdate: self => {
+            prog.textContent = self.progress.toFixed(2);
+            bar.style.transform = `scaleX(${self.progress})`;
+          }
+        }
+      });
+      // 收拢用 power2.inOut：开头慢一点，让人先意识到「图在动」，中段快速收，落点前再减速贴合
+      tl.to(crop, { k: 1, duration: 1, ease: 'power2.inOut', onUpdate: applyCrop }, 0)
+        // 标题在前三分之一就离场：卡片还很大时文字就该让路，不然会被 clip-path 切掉半截
+        .to('#copy', { yPercent: -18, opacity: 0, scale: 0.94, duration: 0.36, ease: 'power1.in' }, 0)
+        .to('#hint', { opacity: 0, duration: 0.08 }, 0)
+        // 夜 → 黎明，和收拢同步，整段滚动有一个「故事」
+        .to('#dawn', { opacity: 1, duration: 0.9, ease: 'sine.inOut' }, 0.05)
+        .to('#stars', { opacity: 0.12, duration: 0.8 }, 0.05)
+        .to('#aurora', { opacity: 0, duration: 0.6 }, 0.1)
+        .to('#sun', { y: -220, duration: 0.95, ease: 'power1.out' }, 0.05);
+      layerEls.forEach((el, i) => tl.to(el, { y: LAYERS[i].drop, duration: 1, ease: 'power1.inOut' }, 0));
+      // 卡片快落定时说明行才浮上来，最后留一小段空程，让卡片在原地停一会儿再放行
+      tl.fromTo(caption, { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.24, ease: 'power2.out' }, 0.8)
+        .to({}, { duration: 0.22 });
+      st = tl.scrollTrigger;
+    });
+  }
+
+  // ---------- 控件 ----------
+  $('scrub').addEventListener('input', e => {
+    const v = +e.target.value;
+    $('sVal').textContent = v ? v.toFixed(1) + 's' : '跟手';
+  });
+  // scrub 是 ScrollTrigger 创建时定死的，只能重建；放在 change 里，拖动过程中不反复重建
+  $('scrub').addEventListener('change', e => {
+    cfg.scrub = +e.target.value;
+    if (reduce) return;
+    const y = scrollY;
+    build();
+    ScrollTrigger.refresh();
+    scrollTo(0, y);
+  });
+  $('width').addEventListener('input', e => {
+    cfg.width = +e.target.value;
+    $('wVal').textContent = Math.round(cfg.width * 100) + '%';
+    if (!reduce) applyCrop();
+  });
+  $('toggle').addEventListener('click', e => {
+    const open = $('panel').classList.toggle('open');
+    e.currentTarget.classList.toggle('on', open);
+    e.currentTarget.setAttribute('aria-expanded', open);
+  });
+
+  // 演示：先回到顶，再匀速滚到 pin 结束的位置。autoKill 让用户一伸手滚动就把控制权还回去
+  let demo;
+  $('play').addEventListener('click', () => {
+    if (reduce || !st) return;
+    if (demo) demo.kill();
+    demo = gsap.timeline()
+      .to(window, { scrollTo: { y: 0, autoKill: true }, duration: scrollY > 4 ? 0.9 : 0, ease: 'power2.inOut' })
+      .to(window, { scrollTo: { y: st.end, autoKill: true }, duration: 3.2, ease: 'sine.inOut' }, '+=0.25');
+  });
+
+  addEventListener('resize', () => { if (!reduce) applyCrop(); });
+
+  if (reduce) {
+    // 减少动态：不 pin、不 scrub，保留一张静态的全屏首图，滚下去就是正文
+    $('play').textContent = '已减少动态';
+    $('play').disabled = true;
+    $('hint').style.display = 'none';
+    $('scrub').disabled = $('width').disabled = true;
+  } else {
+    build();
+    // 入场：画面从稍微放大的状态退回来，标题逐行升起。控制在 2 秒内走完，不耽误用户开始滚
+    gsap.timeline({ defaults: { ease: 'power3.out' } })
+      .from('#art', { scale: 1.12, duration: 2, ease: 'power2.out', transformOrigin: '50% 60%' }, 0)
+      .from('.eyebrow', { y: 16, opacity: 0, duration: 0.8 }, 0.2)
+      .from('h1 .line', { yPercent: 60, opacity: 0, duration: 1, stagger: 0.12 }, 0.3)
+      .from('.sub', { y: 16, opacity: 0, duration: 0.8 }, 0.6)
+      .from('#hint', { opacity: 0, duration: 0.6 }, 1);
+    // 提示线反复往下「流」，比文字更直白地说「往下滚」
+    gsap.fromTo('#hint i', { scaleY: 0 }, { scaleY: 1, duration: 1.2, ease: 'power2.inOut', repeat: -1, repeatDelay: 0.3 });
+  }
+</script>
+
+<!-- 图鉴浮条：返回图鉴 + 把这个 demo 的链接和提示词复制给 AI Agent -->
+<div id="galleryBar">
+  <a href="/" class="gb">← 图鉴</a>
+  <button class="gb" id="gbCopy">⧉ 复制给 AI</button>
+</div>
+<style>
+  #galleryBar {
+    position: fixed; left: 16px; bottom: 16px; z-index: 9999;
+    display: flex; gap: 8px; font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+  }
+  #galleryBar .gb {
+    font-size: 12px; line-height: 1; padding: 8px 12px; border-radius: 8px; cursor: pointer;
+    color: #8b949e; background: rgba(22,27,34,.92); border: 1px solid #30363d;
+    text-decoration: none; backdrop-filter: blur(8px); font-family: inherit;
+    transition: color .16s, border-color .16s;
+  }
+  #galleryBar .gb:hover { color: #58e6a8; border-color: #58e6a8; }
+  #galleryBar .gb.done { color: #58e6a8; border-color: rgba(88,230,168,.6); }
+  @media (max-width: 520px) { #galleryBar { left: 10px; bottom: 10px; } }
+</style>
+<script>
+  (function () {
+    var DEMO = 'scroll-zoom-hero', TITLE = '滚动缩放 Hero';
+    var origin = location.protocol.startsWith('http') ? location.origin : 'https://gsap.leolee0812.site';
+    var text = '参考这个页面：' + origin + '/demos/' + DEMO + '.html\n' +
+      '它用 GSAP 3.13 实现了「' + TITLE + '」，源码里有完整可运行的实现和中文注释。\n' +
+      '请先读取这个链接，弄清它的实现方式（用到哪些插件、时间轴怎么排、缓动怎么选），\n' +
+      '然后把同样的效果复刻到我的项目里：沿用我现有的页面结构和配色，保持一致的节奏和手感。';
+    var btn = document.getElementById('gbCopy');
+    btn.addEventListener('click', function () {
+      var done = function () {
+        btn.textContent = '✓ 已复制，粘给你的 Agent';
+        btn.classList.add('done');
+        clearTimeout(btn._t);
+        btn._t = setTimeout(function () {
+          btn.textContent = '⧉ 复制给 AI';
+          btn.classList.remove('done');
+        }, 2200);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, done);
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+        done();
+      }
+    });
+  })();
+</script>
+</body>
+</html>
