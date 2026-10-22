@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1117'/%3E%3Cpath d='M9 22c3-9 8-13 14-12' stroke='%2358e6a8' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='23' cy='10' r='3' fill='%233b82f6'/%3E%3C/svg%3E">
+<title>点赞爆发</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+    min-height: 100vh; padding: 40px 20px 80px;
+    display: flex; flex-direction: column; align-items: center; gap: 22px;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .sub { font-size: 14px; opacity: .55; margin-top: -12px; text-align: center; line-height: 1.6; }
+
+  /* 舞台本身就是「双击点赞」的热区：粒子层盖在上面但不吃事件，overflow 把飞远的粒子裁掉，
+     手机上半径拉满也不会撑出横向滚动条 */
+  .stage {
+    position: relative; width: 100%; max-width: 960px; height: 400px;
+    background:
+      radial-gradient(ellipse at 50% 44%, rgba(255,122,168,.07), transparent 58%),
+      radial-gradient(circle, rgba(255,255,255,.035) 1px, transparent 1.5px) 0 0 / 22px 22px,
+      #161b22;
+    border: 1px solid #30363d; border-radius: 16px; overflow: hidden;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px;
+    touch-action: manipulation; user-select: none; -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent; cursor: default;
+  }
+  .fx { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+
+  /* 按钮只当点击区域，真正缩放的是里面的 .hearts：被按下缩小时可点范围不跟着缩 */
+  .like {
+    position: relative; z-index: 2; width: 120px; height: 120px; border-radius: 50%;
+    border: 0; background: none; cursor: pointer; color: inherit; font: inherit;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  }
+  .like:focus { outline: none; }
+  .like:focus-visible { box-shadow: 0 0 0 3px #0d1117, 0 0 0 5px #3b82f6; }
+  .pad {
+    position: absolute; inset: 0; border-radius: 50%;
+    background: radial-gradient(circle at 50% 40%, #222a35, #191f28 70%);
+    border: 1px solid #30363d;
+    box-shadow: inset 0 2px 0 rgba(255,255,255,.05), 0 10px 30px rgba(0,0,0,.35);
+  }
+  /* 点亮后的粉色光晕单独一层，只动 opacity，不去补间 box-shadow，省得每帧重绘阴影 */
+  .glow {
+    position: absolute; inset: -18px; border-radius: 50%; opacity: 0; pointer-events: none;
+    background: radial-gradient(circle, rgba(255,122,168,.32), rgba(255,122,168,0) 66%);
+  }
+  .hearts { position: absolute; inset: 0; display: grid; place-items: center; will-change: transform; }
+  .hearts svg { grid-area: 1 / 1; width: 58px; height: 58px; overflow: visible; }
+  .outline { fill: none; stroke: #8b949e; stroke-width: 1.7; stroke-linejoin: round; transition: stroke .2s; }
+  .like:hover .outline { stroke: #ff7aa8; }
+  .filled { transform: scale(0); fill: url(#heartGrad); }
+
+  /* 计数：每一位数字单独一个窗口，只有变了的那几位滚动，像机械计数器 */
+  .meta { display: flex; align-items: baseline; gap: 8px; font-size: 14px; color: #8b949e; position: relative; z-index: 2; }
+  .count {
+    display: inline-flex; font-size: 24px; font-weight: 700; color: #e6edf3;
+    font-variant-numeric: tabular-nums; transition: color .3s;
+  }
+  .count.on { color: #ff7aa8; }
+  .count .d { position: relative; display: inline-block; height: 1.2em; line-height: 1.2em; overflow: hidden; }
+  .count .d span { display: block; }
+  .count .d span + span { position: absolute; left: 0; top: 0; }
+
+  .tip { position: absolute; bottom: 18px; left: 0; right: 0; text-align: center; font-size: 12px; color: #6e7681; letter-spacing: .5px; pointer-events: none; }
+
+  /* 粒子、圆环、双击出现的大爱心都由脚本临时创建，放进 .fx 层，动画结束就移除 */
+  .p { position: absolute; left: 0; top: 0; border-radius: 50%; will-change: transform; }
+  .p.h { border-radius: 0; background: none !important; }
+  .p.h svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .ring { position: absolute; left: 0; top: 0; border-radius: 50%; border-style: solid; }
+  .big { position: absolute; left: 0; top: 0; width: 96px; height: 96px; will-change: transform;
+    fill: url(#heartGrad); filter: drop-shadow(0 8px 22px rgba(255,92,138,.45)); }
+  
+
+  .panel {
+    display: flex; gap: 22px 28px; flex-wrap: wrap; justify-content: center; align-items: flex-end;
+    background: #161b22; border: 1px solid #30363d; border-radius: 14px;
+    padding: 16px 22px; max-width: 960px; width: 100%;
+  }
+  .ctrl { display: flex; flex-direction: column; gap: 7px; }
+  .ctrl label { font-size: 12px; opacity: .6; }
+  input[type=range] { width: 160px; accent-color: #58e6a8; }
+  .val { font-size: 12px; color: #58e6a8; font-family: ui-monospace, Menlo, monospace; }
+  .replay {
+    background: #58e6a8; color: #0d1117; border: 0; border-radius: 24px;
+    padding: 10px 26px; font-size: 14px; font-weight: 600; cursor: pointer;
+    font-family: inherit; transition: transform .16s, box-shadow .16s;
+  }
+  .replay:hover { box-shadow: 0 0 22px rgba(88,230,168,.4); }
+  .replay:active { transform: scale(.96); }
+
+  .note { font-size: 12px; color: #6e7681; text-align: center; max-width: 600px; line-height: 1.7; }
+  .note code { color: #58e6a8; font-family: ui-monospace, Menlo, monospace; }
+
+  @media (max-width: 520px) {
+    body { padding: 28px 14px 72px; gap: 18px; }
+    .stage { height: 360px; gap: 22px; }
+    .like { width: 108px; height: 108px; }
+    .hearts svg { width: 52px; height: 52px; }
+    .big { width: 84px; height: 84px; }
+    .panel { padding: 14px 16px; gap: 16px 20px; justify-content: flex-start; }
+    input[type=range] { width: 140px; }
+  }
+</style>
+</head>
+<body>
+  <h1>点赞爆发</h1>
+  <p class="sub">点一下爱心：先缩、再炸开一圈圆环和彩色粒子，爱心弹着填满；空白处双击也能点赞</p>
+
+  <!-- 渐变只定义一次，主爱心、双击大爱心、小爱心粒子都引用它 -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <linearGradient id="heartGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#ff9cc0"/>
+        <stop offset=".55" stop-color="#ff5c8a"/>
+        <stop offset="1" stop-color="#e2366b"/>
+      </linearGradient>
+      <path id="heartPath" d="M12 20.6s-7.6-4.5-9.4-9.3C1.2 7.6 3.5 4.2 7 4.2c2.1 0 3.8 1.1 5 2.9 1.2-1.8 2.9-2.9 5-2.9 3.5 0 5.8 3.4 4.4 7.1-1.8 4.8-9.4 9.3-9.4 9.3z"/>
+    </defs>
+  </svg>
+
+  <div class="stage" id="stage">
+    <button class="like" id="like" aria-label="点赞" aria-pressed="false">
+      <span class="glow"></span>
+      <span class="pad"></span>
+      <span class="hearts">
+        <svg class="outline" viewBox="0 0 24 24"><use href="#heartPath"/></svg>
+        <svg class="filled" viewBox="0 0 24 24"><use href="#heartPath"/></svg>
+      </span>
+    </button>
+    <div class="meta"><span class="count" id="count"></span><span>人觉得很赞</span></div>
+    <p class="tip" id="tip">点爱心，或者在空白处双击</p>
+    <div class="fx" id="fx"></div>
+  </div>
+
+  <div class="panel">
+    <div class="ctrl">
+      <label>粒子数量 <span class="val" id="nVal">14 组</span></label>
+      <input type="range" id="num" min="6" max="24" step="1" value="14">
+    </div>
+    <div class="ctrl">
+      <label>爆发半径 <span class="val" id="rVal">78px</span></label>
+      <input type="range" id="rad" min="44" max="130" step="2" value="78">
+    </div>
+    <button class="replay" id="replay">▶ 演示一遍</button>
+  </div>
+
+  <p class="note">
+    一次点赞拆成三拍：爱心先 <code>power2.in</code> 缩没，实心圆从中心胀开再「掏空」成细环，粒子趁环最薄时从环边射出、<code>power3.out</code> 急停后缩成点，最后实心爱心用 <code>elastic.out</code> 弹回来。取消点赞刻意做得很轻，只缩一下不放烟花。
+  </p>
+
+<script src="../lib/gsap.min.js"></script>
+<script>
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const stage = document.getElementById('stage');
+  const fx = document.getElementById('fx');
+  const like = document.getElementById('like');
+  const hearts = like.querySelector('.hearts');
+  const outline = like.querySelector('.outline');
+  const filled = like.querySelector('.filled');
+  const glow = like.querySelector('.glow');
+  const countEl = document.getElementById('count');
+  const tip = document.getElementById('tip');
+
+  // 粒子配色：主色粉打底，混进图鉴的绿和蓝，再加一点暖黄和紫，炸开时不会是一坨同色
+  const COLORS = ['#ff7aa8', '#58e6a8', '#ffd166', '#3b82f6', '#c58cff'];
+  const HEART_SVG = '<svg viewBox="0 0 24 24" fill="url(#heartGrad)"><use href="#heartPath"/></svg>';
+  const cfg = { n: 14, r: 78 };
+  let liked = false, count = 1286, heartTl = null;
+
+  // ---------- 计数器：逐位比较，只滚动变了的那几位 ----------
+  const fmt = n => n.toLocaleString('en-US');
+  function renderCount() {
+    countEl.innerHTML = [...fmt(count)].map(c => `<span class="d"><span>${c}</span></span>`).join('');
+  }
+  function rollCount(dir) {
+    const next = fmt(count);
+    const cells = [...countEl.children];
+    // 位数变了（999 → 1,000）就整串重排，逐位对齐在这种情况下没有意义
+    if (cells.length !== next.length || reduce) { renderCount(); return; }
+    let k = 0;
+    // 从个位往高位数，变了的位依次错开一点点，进位时能看出「一位推一位」
+    for (let i = next.length - 1; i >= 0; i--) {
+      const cell = cells[i];
+      const spans = cell.children;
+      // 上一次没滚完又点了：先把残留的旧数字清掉，只留最新那个当起点
+      while (spans.length > 1) { gsap.killTweensOf(spans[0]); spans[0].remove(); }
+      const old = spans[0];
+      if (old.textContent === next[i]) continue;
+      const neu = document.createElement('span');
+      neu.textContent = next[i];
+      cell.appendChild(neu);
+      const d = k++ * 0.05;
+      // 加一往上滚、减一往下滚，方向和数字增减对得上
+      gsap.fromTo(old, { yPercent: 0 }, { yPercent: -100 * dir, opacity: 0, duration: 0.42, delay: d, ease: 'power3.inOut',
+        onComplete: () => old.remove() });
+      gsap.fromTo(neu, { yPercent: 100 * dir, opacity: 0 }, { yPercent: 0, opacity: 1, duration: 0.42, delay: d, ease: 'power3.inOut',
+        onComplete: () => gsap.set(neu, { clearProps: 'transform' }) });
+    }
+  }
+
+  // ---------- 爆发：一圈从实心胀开再掏空的圆环 + 成对射出的粒子 ----------
+  function burst(x, y, n, r) {
+    if (reduce) return;
+    // 圆环：border-box 下边框宽等于半径就是实心圆盘，把边框收到 0 就从里往外被「掏空」。
+    // 尺寸一开始就按终点算好，只补间 scale，整个过程不会触发布局
+    const ring = document.createElement('div');
+    ring.className = 'ring';
+    const R = r * 0.62;
+    gsap.set(ring, { width: R * 2, height: R * 2, x: x - R, y: y - R, borderWidth: R,
+      borderColor: '#ff5c8a', scale: 0.1, transformOrigin: '50% 50%' });
+    fx.appendChild(ring);
+    gsap.timeline({ onComplete: () => ring.remove() })
+      .to(ring, { scale: 1, duration: 0.36, ease: 'power2.out' })
+      .to(ring, { borderWidth: 0, duration: 0.36, ease: 'power2.in' }, 0.04)
+      .to(ring, { borderColor: '#c58cff', duration: 0.3, ease: 'none' }, 0.05);
+
+    // 粒子成对出现：一大一小、角度错开一点、小的飞得更远。
+    // 单颗粒子均匀一圈看起来像钟面，成对之后才有「碎屑」的随机感
+    const rot = Math.random() * Math.PI * 2;
+    for (let i = 0; i < n; i++) {
+      const a = rot + (i / n) * Math.PI * 2;
+      const color = COLORS[i % COLORS.length];
+      spark(x, y, a, r, 7 + Math.random() * 2, color, i % 4 === 0, 0.13);
+      spark(x, y, a + 0.22, r * 1.12, 3.5 + Math.random() * 1.5, COLORS[(i + 2) % COLORS.length], false, 0.16);
+    }
+  }
+
+  function spark(x, y, a, r, size, color, isHeart, delay) {
+    const p = document.createElement('div');
+    p.className = isHeart ? 'p h' : 'p';
+    if (isHeart) { p.innerHTML = HEART_SVG; size *= 1.6; }
+    p.style.width = p.style.height = size + 'px';
+    p.style.background = color;
+    fx.appendChild(p);
+    const dx = Math.cos(a), dy = Math.sin(a);
+    const jitter = gsap.utils.random(0.85, 1.12);
+    const off = size / 2;
+    // 起点放在圆环半径附近，而不是正中心：粒子像是从环上被甩出去的
+    gsap.set(p, { x: x + dx * r * 0.4 - off, y: y + dy * r * 0.4 - off, scale: 0.4, rotation: a * 57.3 + 90 });
+    gsap.timeline({ delay, onComplete: () => p.remove() })
+      .to(p, { x: x + dx * r * jitter - off, y: y + dy * r * jitter - off, duration: 0.72, ease: 'power3.out' })
+      // 先长大再缩没：位移用 power3.out 急停，大小在后半程才开始收，飞到头时刚好消失
+      .to(p, { scale: 1, duration: 0.18, ease: 'power2.out' }, 0)
+      .to(p, { scale: 0, duration: 0.42, ease: 'power2.in' }, 0.3);
+  }
+
+  // 主爱心中心点（相对舞台），每次现算，窗口缩放后也准
+  function likeCenter() {
+    const s = stage.getBoundingClientRect(), b = like.getBoundingClientRect();
+    return [b.left - s.left + b.width / 2, b.top - s.top + b.height / 2];
+  }
+
+  // ---------- 点赞 / 取消 ----------
+  function setLiked(v, withBurst = true) {
+    if (v === liked) return;
+    liked = v;
+    like.setAttribute('aria-pressed', v);
+    like.setAttribute('aria-label', v ? '取消点赞' : '点赞');
+    count += v ? 1 : -1;
+    countEl.classList.toggle('on', v);
+    rollCount(v ? 1 : -1);
+    if (heartTl) heartTl.kill();
+
+    if (reduce) {
+      // 减少动态：不放粒子不弹跳，只做一个很短的交叉淡入，状态变化依然看得清
+      heartTl = gsap.timeline()
+        .to(outline, { opacity: v ? 0 : 1, duration: 0.15 }, 0)
+        .to(filled, { scale: 1, opacity: v ? 1 : 0, duration: 0.15 }, 0)
+        .to(glow, { opacity: v ? 1 : 0, duration: 0.15 }, 0);
+      return;
+    }
+
+    if (v) {
+      const [cx, cy] = likeCenter();
+      heartTl = gsap.timeline()
+        // 第一拍：空心爱心加速缩没，给后面的爆发让出舞台
+        .to(outline, { scale: 0, duration: 0.14, ease: 'power2.in' })
+        .call(() => withBurst && burst(cx, cy, cfg.n, cfg.r), null, 0.06)
+        // 第二拍：实心爱心等圆环掏空到一半才冒出来，elastic 的过冲就是「啵」的那一下
+        .fromTo(filled, { scale: 0, opacity: 1, rotation: -18 },
+          { scale: 1, rotation: 0, duration: 0.95, ease: 'elastic.out(1.1, 0.42)' }, withBurst ? 0.22 : 0.08)
+        .to(glow, { opacity: 1, duration: 0.5, ease: 'power2.out' }, 0.22)
+        // 空心爱心悄悄恢复原尺寸但保持透明，下次取消时直接淡回来就行
+        .set(outline, { scale: 1, opacity: 0 }, 0.3);
+    } else {
+      // 取消点赞是「收回」，不是庆祝：一下轻缩就够了，动静大了反而像在鼓励取消
+      heartTl = gsap.timeline()
+        .to(filled, { scale: 0.55, opacity: 0, duration: 0.22, ease: 'power2.in' })
+        .to(glow, { opacity: 0, duration: 0.3 }, 0)
+        .fromTo(outline, { scale: 0.7, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.5, ease: 'back.out(2.6)' }, 0.12);
+    }
+  }
+
+  // 按下就先缩一点，松手再弹：点赞的结果在 click 里，但手感从 pointerdown 就开始了
+  like.addEventListener('pointerdown', e => {
+    if (e.button > 0 || reduce) return;
+    gsap.to(hearts, { scale: 0.84, duration: 0.12, ease: 'power2.out', overwrite: true });
+  });
+  const unpress = () => !reduce && gsap.to(hearts, { scale: 1, duration: 0.6, ease: 'elastic.out(1, 0.45)', overwrite: true });
+  like.addEventListener('pointerup', unpress);
+  like.addEventListener('pointerleave', unpress);
+  like.addEventListener('pointercancel', unpress);
+  like.addEventListener('click', () => { setLiked(!liked); hideTip(); });
+
+  // ---------- 双击空白处：在落点冒出一颗大爱心，顺手把主按钮点亮 ----------
+  // 不用原生 dblclick：手机上它要么不触发、要么被缩放手势吃掉，自己按时间和距离判一次更稳
+  let lastTap = { t: 0, x: 0, y: 0 };
+  stage.addEventListener('pointerup', e => {
+    if (e.button > 0 || e.target.closest('.like')) return;
+    const s = stage.getBoundingClientRect();
+    const x = e.clientX - s.left, y = e.clientY - s.top;
+    const now = performance.now();
+    if (now - lastTap.t < 320 && Math.hypot(x - lastTap.x, y - lastTap.y) < 36) {
+      bigHeart(x, y);
+      lastTap.t = 0; // 三连击不算两次双击
+    } else {
+      lastTap = { t: now, x, y };
+    }
+  });
+
+  function bigHeart(x, y) {
+    hideTip();
+    const h = document.createElement('div');
+    h.className = 'big';
+    h.innerHTML = '<svg viewBox="0 0 24 24" width="100%" height="100%"><use href="#heartPath"/></svg>';
+    fx.appendChild(h);
+    const half = h.offsetWidth / 2;
+    // 每颗随机歪一点，连续双击时一串爱心不会长得一模一样
+    const tilt = gsap.utils.random(-16, 16);
+    gsap.set(h, { x: x - half, y: y - half, rotation: tilt, transformOrigin: '50% 60%' });
+    if (reduce) {
+      gsap.timeline({ onComplete: () => h.remove() })
+        .from(h, { opacity: 0, duration: 0.15 }).to(h, { opacity: 0, duration: 0.3, delay: 0.5 });
+    } else {
+      burst(x, y, Math.max(6, Math.round(cfg.n * 0.6)), cfg.r * 0.8);
+      gsap.timeline({ onComplete: () => h.remove() })
+        .fromTo(h, { scale: 0 }, { scale: 1.18, duration: 0.24, ease: 'back.out(2.2)' })
+        .to(h, { scale: 1, duration: 0.18, ease: 'power2.inOut' })
+        // 停半拍让人看清，再往上飘走：停顿比动作本身更能让人记住「我点到了」
+        .to(h, { y: `-=${70}`, scale: 0.6, opacity: 0, rotation: tilt * 0.4, duration: 0.55, ease: 'power2.in' }, '+=0.32');
+    }
+    // 双击只点亮、不取消，和常见社交应用的习惯一致；已点亮时只出大爱心
+    if (!liked) setLiked(true, false);
+  }
+
+  let tipHidden = false;
+  function hideTip() {
+    if (tipHidden) return;
+    tipHidden = true;
+    gsap.to(tip, { opacity: 0.35, duration: 0.6 });
+  }
+
+  // ---------- 演示：取消 → 点赞 → 舞台两侧各双击一次 ----------
+  let demo;
+  function runDemo() {
+    if (demo) demo.kill();
+    const w = stage.clientWidth, h = stage.clientHeight;
+    const pressOnce = () => {
+      gsap.to(hearts, { scale: 0.84, duration: 0.12, ease: 'power2.out', overwrite: true });
+      gsap.delayedCall(0.12, () => { unpress(); setLiked(true); });
+    };
+    demo = gsap.timeline()
+      .call(() => setLiked(false))
+      .call(pressOnce, null, liked ? 0.55 : 0)
+      .call(() => bigHeart(w * 0.2, h * 0.26), null, '+=1.15')
+      .call(() => bigHeart(w * 0.8, h * 0.3), null, '+=0.45');
+  }
+
+  // ---------- 控件 ----------
+  const num = document.getElementById('num'), rad = document.getElementById('rad');
+  num.addEventListener('input', () => {
+    cfg.n = +num.value;
+    document.getElementById('nVal').textContent = cfg.n + ' 组';
+  });
+  rad.addEventListener('input', () => {
+    cfg.r = +rad.value;
+    document.getElementById('rVal').textContent = cfg.r + 'px';
+  });
+  // 拖完滑块松手时原地放一次，不用回去点爱心就能看到新参数的效果
+  [num, rad].forEach(el => el.addEventListener('change', () => {
+    const [cx, cy] = likeCenter();
+    burst(cx, cy, cfg.n, cfg.r);
+  }));
+  document.getElementById('replay').addEventListener('click', runDemo);
+
+  renderCount();
+  if (reduce) {
+    tip.textContent = '已开启「减少动态」，只保留状态切换，不放粒子';
+  } else {
+    // 入场：按钮从无到有弹出来，计数和提示随后淡入，再自动演示一遍
+    gsap.timeline({ delay: 0.15 })
+      .from(like, { scale: 0, duration: 0.9, ease: 'elastic.out(1, 0.5)' })
+      .from('.meta', { y: 12, opacity: 0, duration: 0.5, ease: 'power2.out' }, 0.25)
+      .from(tip, { opacity: 0, duration: 0.6 }, 0.5)
+      .call(runDemo, null, 0.95);
+  }
+</script>
+
+<!-- 图鉴浮条：返回图鉴 + 把这个 demo 的链接和提示词复制给 AI Agent -->
+<div id="galleryBar">
+  <a href="/" class="gb">← 图鉴</a>
+  <button class="gb" id="gbCopy">⧉ 复制给 AI</button>
+</div>
+<style>
+  #galleryBar {
+    position: fixed; left: 16px; bottom: 16px; z-index: 9999;
+    display: flex; gap: 8px; font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+  }
+  #galleryBar .gb {
+    font-size: 12px; line-height: 1; padding: 8px 12px; border-radius: 8px; cursor: pointer;
+    color: #8b949e; background: rgba(22,27,34,.92); border: 1px solid #30363d;
+    text-decoration: none; backdrop-filter: blur(8px); font-family: inherit;
+    transition: color .16s, border-color .16s;
+  }
+  #galleryBar .gb:hover { color: #58e6a8; border-color: #58e6a8; }
+  #galleryBar .gb.done { color: #58e6a8; border-color: rgba(88,230,168,.6); }
+  @media (max-width: 520px) { #galleryBar { left: 10px; bottom: 10px; } }
+</style>
+<script>
+  (function () {
+    var DEMO = 'like-burst', TITLE = '点赞爆发';
+    var origin = location.protocol.startsWith('http') ? location.origin : 'https://gsap.leolee0812.site';
+    var text = '参考这个页面：' + origin + '/demos/' + DEMO + '.html\n' +
+      '它用 GSAP 3.13 实现了「' + TITLE + '」，源码里有完整可运行的实现和中文注释。\n' +
+      '请先读取这个链接，弄清它的实现方式（用到哪些插件、时间轴怎么排、缓动怎么选），\n' +
+      '然后把同样的效果复刻到我的项目里：沿用我现有的页面结构和配色，保持一致的节奏和手感。';
+    var btn = document.getElementById('gbCopy');
+    btn.addEventListener('click', function () {
+      var done = function () {
+        btn.textContent = '✓ 已复制，粘给你的 Agent';
+        btn.classList.add('done');
+        clearTimeout(btn._t);
+        btn._t = setTimeout(function () {
+          btn.textContent = '⧉ 复制给 AI';
+          btn.classList.remove('done');
+        }, 2200);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, done);
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+        done();
+      }
+    });
+  })();
+</script>
+</body>
+</html>
