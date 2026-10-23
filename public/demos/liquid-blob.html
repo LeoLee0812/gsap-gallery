@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1117'/%3E%3Cpath d='M9 22c3-9 8-13 14-12' stroke='%2358e6a8' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='23' cy='10' r='3' fill='%233b82f6'/%3E%3C/svg%3E">
+<title>液体 Blob</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+    min-height: 100vh; padding: 40px 20px 80px;
+    display: flex; flex-direction: column; align-items: center; gap: 22px;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .sub { font-size: 14px; opacity: .55; margin-top: -12px; text-align: center; line-height: 1.6; }
+
+  /* 舞台就是整块交互区。touch-action: none 让手指在上面拖动时推液体，而不是滚页面；
+     overflow 把被推到边上的液滴裁掉，手机上不会撑出横向滚动条 */
+  .stage {
+    position: relative; width: 100%; max-width: 960px; height: 440px;
+    background:
+      radial-gradient(circle, rgba(255,255,255,.035) 1px, transparent 1.5px) 0 0 / 22px 22px,
+      #161b22;
+    border: 1px solid #30363d; border-radius: 16px; overflow: hidden;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent; cursor: crosshair;
+  }
+  .stage svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* 底光单独一个 div，跟着液体中心走，只动 transform。
+     如果给 SVG 再叠一层模糊滤镜做发光，每帧都要多算一遍大面积高斯模糊 */
+  .halo {
+    position: absolute; left: 0; top: 0; width: 520px; height: 520px; margin: -260px 0 0 -260px;
+    border-radius: 50%; pointer-events: none; will-change: transform;
+    background: radial-gradient(circle, rgba(88,230,168,.16), rgba(59,130,246,.07) 40%, transparent 68%);
+  }
+
+  /* 推力范围的示意圈：手指会挡住视线，画个圈才知道自己在推多大一片 */
+  .field {
+    position: absolute; left: 0; top: 0; border-radius: 50%; pointer-events: none;
+    border: 1px dashed rgba(230,237,243,.28); opacity: 0; will-change: transform;
+  }
+  .field::after {
+    content: ''; position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px;
+    border-radius: 50%; background: #e6edf3; opacity: .7;
+  }
+  .ripple { position: absolute; left: 0; top: 0; border-radius: 50%; border: 1.5px solid #58e6a8; pointer-events: none; }
+
+  .tip { position: absolute; bottom: 18px; left: 0; right: 0; text-align: center; font-size: 12px; color: #6e7681; letter-spacing: .5px; pointer-events: none; }
+
+  .panel {
+    display: flex; gap: 22px 28px; flex-wrap: wrap; justify-content: center; align-items: flex-end;
+    background: #161b22; border: 1px solid #30363d; border-radius: 14px;
+    padding: 16px 22px; max-width: 960px; width: 100%;
+  }
+  .ctrl { display: flex; flex-direction: column; gap: 7px; }
+  .ctrl label { font-size: 12px; opacity: .6; }
+  input[type=range] { width: 160px; accent-color: #58e6a8; }
+  .val { font-size: 12px; color: #58e6a8; font-family: ui-monospace, Menlo, monospace; }
+  .replay {
+    background: #58e6a8; color: #0d1117; border: 0; border-radius: 24px;
+    padding: 10px 26px; font-size: 14px; font-weight: 600; cursor: pointer;
+    font-family: inherit; transition: transform .16s, box-shadow .16s;
+  }
+  .replay:hover { box-shadow: 0 0 22px rgba(88,230,168,.4); }
+  .replay:active { transform: scale(.96); }
+  .replay:disabled { opacity: .4; cursor: default; box-shadow: none; transform: none; }
+
+  .note { font-size: 12px; color: #6e7681; text-align: center; max-width: 620px; line-height: 1.7; }
+  .note code { color: #58e6a8; font-family: ui-monospace, Menlo, monospace; }
+
+  @media (max-width: 520px) {
+    body { padding: 28px 14px 72px; gap: 18px; }
+    .stage { height: 380px; }
+    .halo { width: 380px; height: 380px; margin: -190px 0 0 -190px; }
+    .panel { padding: 14px 16px; gap: 16px 20px; justify-content: flex-start; }
+    input[type=range] { width: 140px; }
+  }
+</style>
+</head>
+<body>
+  <h1>液体 Blob</h1>
+  <p class="sub">一团液体自己慢慢流动变形，甩出的小液滴又被吸回去；光标或手指靠近，它会被推开、凹进去，点一下还会荡起一圈涟漪</p>
+
+  <div class="stage" id="stage">
+    <div class="halo" id="halo"></div>
+    <svg id="svg" aria-label="可以推动的液体">
+      <defs>
+        <!-- 「黏液」滤镜：先把形状糊开，再把 alpha 拉陡重新切出硬边。
+             两团东西糊开后的边缘一旦重叠就会被切成一整块，液滴分离和融合时那条细颈就是这么来的 -->
+        <filter id="goo" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="9" result="b"/>
+          <feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -9"/>
+        </filter>
+        <!-- 渐变用 userSpaceOnUse：主体和小液滴共用同一张色板，融合处不会出现色差接缝 -->
+        <linearGradient id="fill" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#7ff5c4"/>
+          <stop offset=".45" stop-color="#58e6a8"/>
+          <stop offset="1" stop-color="#3b82f6"/>
+        </linearGradient>
+        <!-- 高光按自身包围盒定位，形状怎么变，亮斑都留在左上方 -->
+        <radialGradient id="shine" cx=".34" cy=".28" r=".55">
+          <stop offset="0" stop-color="#fff" stop-opacity=".42"/>
+          <stop offset=".45" stop-color="#fff" stop-opacity=".08"/>
+          <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="shade" cx=".62" cy=".78" r=".7">
+          <stop offset="0" stop-color="#0d1117" stop-opacity=".32"/>
+          <stop offset="1" stop-color="#0d1117" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <g filter="url(#goo)" fill="url(#fill)">
+        <path id="body"/>
+        <circle class="drop" r="0"/><circle class="drop" r="0"/><circle class="drop" r="0"/><circle class="drop" r="0"/>
+        <!-- 明暗也放进滤镜组里一起糊：放在外面的话，它只盖住主体轮廓，和液滴融合的颈部会露出一道硬边 -->
+        <use href="#body" fill="url(#shade)"/>
+        <use href="#body" fill="url(#shine)"/>
+      </g>
+    </svg>
+    <div class="field" id="field"></div>
+    <p class="tip" id="tip">靠近它推一推 · 点一下戳出涟漪</p>
+  </div>
+
+  <div class="panel">
+    <div class="ctrl">
+      <label>粘稠度 <span class="val" id="vVal">像糖浆</span></label>
+      <input type="range" id="visc" min="0" max="100" step="1" value="45">
+    </div>
+    <div class="ctrl">
+      <label>流动速度 <span class="val" id="sVal">1.0×</span></label>
+      <input type="range" id="speed" min="0" max="250" step="5" value="100">
+    </div>
+    <div class="ctrl">
+      <label>推开范围 <span class="val" id="pVal">70px</span></label>
+      <input type="range" id="push" min="30" max="130" step="2" value="70">
+    </div>
+    <button class="replay" id="replay">▶ 演示一遍</button>
+  </div>
+
+  <p class="note">
+    轮廓是 72 个顶点，每个顶点只沿半径方向做弹簧运动：目标半径由三层不同频率的正弦叠出来，所以永远在流却不重复；光标被当成一个圆，射线碰到它就把顶点挡在外面，再把挤掉的体积平摊回整圈。相邻顶点互相拉扯，戳一下的凹痕才会像波一样绕着边走。外面一层 <code>feColorMatrix</code> 黏液滤镜负责让小液滴和主体融在一起。
+  </p>
+
+<script src="../lib/gsap.min.js"></script>
+<script>
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const stage = document.getElementById('stage');
+  const svg = document.getElementById('svg');
+  const bodyPath = document.getElementById('body');
+  const grad = document.getElementById('fill');
+  const halo = document.getElementById('halo');
+  const field = document.getElementById('field');
+  const tip = document.getElementById('tip');
+  const dropEls = [...document.querySelectorAll('.drop')];
+
+  const N = 72;                       // 顶点数：再少边缘会出棱角，再多也看不出区别，只是白算
+  const TAU = Math.PI * 2;
+  const cfg = { visc: 0.45, speed: 1, push: 70 };
+
+  // 舞台尺寸和液体的静止半径，窗口变化时重算
+  let W = 0, H = 0, R = 0, c0x = 0, c0y = 0;
+  // 液体中心也是一个弹簧：被推的时候整团往外让，松开再慢慢漂回来
+  const center = { x: 0, y: 0, vx: 0, vy: 0 };
+  // 每个顶点的当前半径、速度、目标半径
+  const r = new Float32Array(N), v = new Float32Array(N), tgt = new Float32Array(N), tmp = new Float32Array(N);
+  const ANG = Array.from({ length: N }, (_, i) => (i / N) * TAU);
+  const COS = ANG.map(Math.cos), SIN = ANG.map(Math.sin);
+
+  // aim 是「手想去的地方」，pt 是实际作用在液体上的点，每帧追一点。
+  // 演示时补间的是 aim，用户一动手直接改 aim，两边不会抢同一个属性
+  const aim = { x: -999, y: -999, s: 0 };
+  const pt = { x: -999, y: -999, s: 0 };
+  // grow 只在入场时从 0 弹到 1，乘在半径上；flow 是噪声的时间轴
+  const life = { grow: reduce ? 1 : 0, flow: 0 };
+
+  function measure() {
+    W = stage.clientWidth; H = stage.clientHeight;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    R = Math.min(W * 0.26, H * 0.27, 150);
+    c0x = W / 2; c0y = H / 2 - 8;
+    if (!center.x) { center.x = c0x; center.y = c0y; }
+  }
+
+  // 三层正弦：低频管大轮廓，高频管表面的小起伏。
+  // 三个频率和速度互不成倍数，叠在一起很久才会重复一次，看着就像在自由流动
+  function wobble(i, t) {
+    const a = ANG[i];
+    return Math.sin(2 * a + t * 0.9) * 0.55
+         + Math.sin(3 * a - t * 1.31 + 1.7) * 0.3
+         + Math.sin(5 * a + t * 1.83 + 4.1) * 0.15;
+  }
+
+  // ---------- 小液滴：在主体内外来回进出，靠黏液滤镜自然地拉丝、断开、再融回去 ----------
+  // 角度和距离都交给 GSAP 补间，每帧再按当前中心换算成坐标，主体被推走时液滴也跟着走
+  const drops = dropEls.map((el, i) => ({ el, a: (i / dropEls.length) * TAU + 0.6, d: 0.55, size: [0.24, 0.17, 0.2, 0.13][i] }));
+  const dropTweens = [];
+  function startDrops() {
+    drops.forEach((p, i) => {
+      // 出去慢、回来快一点（power2.inOut 配上不同时长），四颗错开节拍，避免一起呼吸
+      dropTweens.push(gsap.to(p, { d: 1.28 + i * 0.07, duration: 2.6 + i * 0.7, ease: 'sine.inOut', yoyo: true, repeat: -1, delay: i * 0.9 }));
+      dropTweens.push(gsap.to(p, { a: `+=${TAU * (i % 2 ? -1 : 1)}`, duration: 16 + i * 5, ease: 'none', repeat: -1 }));
+    });
+    // 主时间轴也是一条补间，流动速度滑块直接改 timeScale，噪声和液滴同步变速
+    dropTweens.push(gsap.to(life, { flow: '+=1000', duration: 1000, ease: 'none', repeat: -1 }));
+    setSpeed();
+  }
+
+  // ---------- 每帧物理 ----------
+  function step(dt) {
+    const Rg = R * life.grow;
+    const visc = cfg.visc;
+    // 粘稠度同时压低刚度、加大阻尼、减弱表面张力：水是一碰就晃，蜂蜜是慢慢陷下去再慢慢鼓回来
+    const K = 0.11 - 0.075 * visc, D = 0.07 + 0.2 * visc, T = 0.2 - 0.1 * visc;
+
+    // 作用点追手：追得太紧会把液体「戳穿」，留一点滞后才像在推有分量的东西
+    const follow = Math.min(1, 0.28 * dt);
+    pt.x += (aim.x - pt.x) * follow;
+    pt.y += (aim.y - pt.y) * follow;
+    pt.s += (aim.s - pt.s) * Math.min(1, 0.12 * dt);
+    const P = cfg.push * pt.s;
+
+    // 中心让位：作用圈和液体重叠得越多，整团退得越远，但最多退半个身位，不会被一路推出舞台
+    let tx = c0x, ty = c0y;
+    if (P > 1) {
+      const mx = pt.x - c0x, my = pt.y - c0y, md = Math.hypot(mx, my) || 1;
+      const overlap = Math.max(0, Rg + P - md);
+      const k = Math.min(overlap * 0.32, Rg * 0.5);
+      tx -= (mx / md) * k; ty -= (my / md) * k;
+    }
+    const cK = K * 0.45, cD = D * 0.8;
+    center.vx += ((tx - center.x) * cK - center.vx * cD) * dt;
+    center.vy += ((ty - center.y) * cK - center.vy * cD) * dt;
+    center.x += center.vx * dt; center.y += center.vy * dt;
+
+    // 目标半径：先算自由流动的形状，再让每条射线去撞作用圈
+    const t = life.flow;
+    const qx = pt.x - center.x, qy = pt.y - center.y, q2 = qx * qx + qy * qy, P2 = P * P;
+    let lost = 0;
+    for (let i = 0; i < N; i++) {
+      const base = Rg * (1 + 0.085 * wobble(i, t));
+      let g = base;
+      if (P > 1) {
+        // 射线 (cos, sin) 与作用圈求交，第一个交点就是这条射线上液体能到的最远处
+        const b = qx * COS[i] + qy * SIN[i];
+        const disc = b * b - (q2 - P2);
+        if (disc > 0) {
+          // 中心被圈住时每条射线都「出门就撞」，只压到三成，留着让中心弹簧把整团挪开；
+          // 否则只认前方的交点，背对作用圈的射线（b < 0）不受影响
+          if (q2 < P2) g = base * 0.3;
+          else if (b > 0) g = Math.min(base, Math.max(b - Math.sqrt(disc), base * 0.3));
+        }
+      }
+      tmp[i] = g;
+      lost += base - g;
+    }
+    // 射线法在作用圈边缘会有台阶，两遍 1-2-1 模糊把台阶抹成圆滑的凹坑
+    for (let pass = 0; pass < 2; pass++) {
+      for (let i = 0; i < N; i++) tgt[i] = (tmp[(i + N - 1) % N] + 2 * tmp[i] + tmp[(i + 1) % N]) / 4;
+      tmp.set(tgt);
+    }
+    // 液体不可压缩：凹进去的那部分平摊回整圈，被戳的时候其余部分会微微鼓起来
+    const give = (lost / N) * 0.7;
+    for (let i = 0; i < N; i++) tgt[i] += give;
+
+    // 弹簧积分。帧率掉下来时 dt 会变大，拆成小步走，不然显式积分会炸
+    const sub = Math.ceil(dt), h = dt / sub;
+    for (let s = 0; s < sub; s++) {
+      for (let i = 0; i < N; i++) {
+        // 表面张力：顶点被左右邻居往中间拉，一个地方的凹陷会顺着边缘传出去
+        const lap = r[(i + N - 1) % N] + r[(i + 1) % N] - 2 * r[i];
+        v[i] += ((tgt[i] - r[i]) * K + lap * T - v[i] * D) * h;
+      }
+      for (let i = 0; i < N; i++) r[i] += v[i] * h;
+    }
+  }
+
+  // ---------- 绘制：闭合 Catmull-Rom 转三次贝塞尔，72 个点连成一条没有折角的曲线 ----------
+  const px = new Float32Array(N), py = new Float32Array(N);
+  function draw() {
+    const cx = center.x, cy = center.y;
+    for (let i = 0; i < N; i++) { px[i] = cx + COS[i] * r[i]; py[i] = cy + SIN[i] * r[i]; }
+    let d = `M${px[0].toFixed(1)},${py[0].toFixed(1)}`;
+    for (let i = 0; i < N; i++) {
+      const a = (i + N - 1) % N, b = (i + 1) % N, c = (i + 2) % N;
+      d += `C${(px[i] + (px[b] - px[a]) / 6).toFixed(1)},${(py[i] + (py[b] - py[a]) / 6).toFixed(1)} ` +
+           `${(px[b] - (px[c] - px[i]) / 6).toFixed(1)},${(py[b] - (py[c] - py[i]) / 6).toFixed(1)} ` +
+           `${px[b].toFixed(1)},${py[b].toFixed(1)}`;
+    }
+    bodyPath.setAttribute('d', d);
+
+    const Rg = R * life.grow;
+    drops.forEach(p => {
+      p.el.setAttribute('cx', (cx + Math.cos(p.a) * Rg * p.d).toFixed(1));
+      p.el.setAttribute('cy', (cy + Math.sin(p.a) * Rg * p.d).toFixed(1));
+      p.el.setAttribute('r', (Rg * p.size).toFixed(1));
+    });
+
+    // 渐变方向随流动慢慢转，颜色像在液体里打旋，而不是一张贴死的皮
+    const ga = life.flow * 0.25, gr = R * 1.5;
+    grad.setAttribute('x1', cx - Math.cos(ga) * gr); grad.setAttribute('y1', cy - Math.sin(ga) * gr);
+    grad.setAttribute('x2', cx + Math.cos(ga) * gr); grad.setAttribute('y2', cy + Math.sin(ga) * gr);
+
+    gsap.set(halo, { x: cx, y: cy, scale: 0.35 + life.grow * 0.65 });
+    const P = cfg.push * pt.s;
+    gsap.set(field, { x: pt.x - P, y: pt.y - P, width: P * 2, height: P * 2, opacity: pt.s * 0.9 });
+  }
+
+  // ---------- 输入 ----------
+  function local(e) {
+    const s = stage.getBoundingClientRect();
+    return [e.clientX - s.left, e.clientY - s.top];
+  }
+  let down = null, demo = null;
+  function takeOver() {
+    if (demo) { demo.kill(); demo = null; }
+  }
+  stage.addEventListener('pointermove', e => {
+    if (reduce) return;
+    // 触屏只在按住时推；鼠标悬停就推，「靠近就躲」才是这个效果的看点
+    if (e.pointerType !== 'mouse' && !down) return;
+    takeOver();
+    const [x, y] = local(e);
+    aim.x = x; aim.y = y; aim.s = 1;
+    if (pt.s < 0.05) { pt.x = x; pt.y = y; }   // 刚进来时直接就位，别从上一次离开的地方滑过来
+    hideTip();
+  });
+  stage.addEventListener('pointerdown', e => {
+    const [x, y] = local(e);
+    down = { x, y, t: performance.now() };
+    if (reduce) return;
+    takeOver();
+    if (e.pointerType !== 'mouse') {
+      aim.x = pt.x = x; aim.y = pt.y = y; aim.s = 1;
+      stage.setPointerCapture(e.pointerId);
+    }
+  });
+  const release = e => {
+    // 手指移动不超过 10px、时间够短，才当作「点了一下」，拖完松手不应该再戳一次
+    if (down && e.type === 'pointerup') {
+      const [x, y] = local(e);
+      if (Math.hypot(x - down.x, y - down.y) < 10 && performance.now() - down.t < 320) poke(x, y);
+    }
+    down = null;
+    if (e.pointerType !== 'mouse') aim.s = 0;
+  };
+  stage.addEventListener('pointerup', release);
+  stage.addEventListener('pointercancel', release);
+  stage.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') aim.s = 0; });
+
+  // 戳：给离落点最近的那几个顶点一个向内的速度，剩下的交给表面张力往两边传
+  function poke(x, y, power = 1) {
+    hideTip();
+    ripple(x, y);
+    if (reduce) return;
+    const a = Math.atan2(y - center.y, x - center.x);
+    const kick = R * 0.085 * power, sigma = 0.32;
+    for (let i = 0; i < N; i++) {
+      let da = Math.abs(ANG[i] - ((a + TAU) % TAU));
+      da = Math.min(da, TAU - da);
+      v[i] -= kick * Math.exp(-(da * da) / (2 * sigma * sigma));
+    }
+  }
+  function ripple(x, y) {
+    const el = document.createElement('div');
+    el.className = 'ripple';
+    stage.appendChild(el);
+    const s = 48;
+    gsap.set(el, { width: s, height: s, x: x - s / 2, y: y - s / 2, scale: 0.2, opacity: 0.9 });
+    gsap.to(el, { scale: reduce ? 1 : 1.6, opacity: 0, duration: reduce ? 0.4 : 0.7, ease: 'power2.out', onComplete: () => el.remove() });
+  }
+
+  let tipHidden = false;
+  function hideTip() {
+    if (tipHidden) return;
+    tipHidden = true;
+    gsap.to(tip, { opacity: 0.35, duration: 0.6 });
+  }
+
+  // ---------- 演示：一只看不见的手从左边擦过、按进去、绕半圈，再戳两下 ----------
+  function runDemo() {
+    if (reduce) return;
+    takeOver();
+    const cx = c0x, cy = c0y, D = R + cfg.push * 0.55;
+    aim.x = pt.x = cx - D * 2.4; aim.y = pt.y = cy - R * 0.25; aim.s = 0;
+    demo = gsap.timeline()
+      .to(aim, { s: 1, duration: 0.3 })
+      // 先缓缓靠近，让人看到「还没碰到就开始让」
+      .to(aim, { x: cx - D * 0.95, duration: 1.1, ease: 'power2.out' }, 0)
+      // 再贴着边绕上去：用一个角度代理来走圆弧，比在 x/y 上各补一段曲线好控制
+      .to({ a: Math.PI * 1.08 }, {
+        a: Math.PI * 1.92, duration: 1.6, ease: 'sine.inOut',
+        onUpdate() { const a = this.targets()[0].a; aim.x = cx + Math.cos(a) * D * 0.9; aim.y = cy + Math.sin(a) * D * 0.9; }
+      }, '+=0.15')
+      .to(aim, { x: cx + D * 2.4, y: cy + R * 0.2, duration: 0.9, ease: 'power2.in' })
+      .to(aim, { s: 0, duration: 0.3 }, '-=0.3')
+      .call(() => poke(c0x - R * 0.7, c0y + R * 0.7), null, '+=0.25')
+      .call(() => poke(c0x + R * 0.8, c0y - R * 0.5, 0.8), null, '+=0.55');
+  }
+
+  // ---------- 控件 ----------
+  const visc = document.getElementById('visc'), speed = document.getElementById('speed'), push = document.getElementById('push');
+  function setSpeed() { dropTweens.forEach(tw => tw.timeScale(Math.max(cfg.speed, 0.0001))); }
+  visc.addEventListener('input', () => {
+    cfg.visc = visc.value / 100;
+    document.getElementById('vVal').textContent = cfg.visc < 0.3 ? '像水' : cfg.visc < 0.7 ? '像糖浆' : '像蜂蜜';
+  });
+  speed.addEventListener('input', () => {
+    cfg.speed = speed.value / 100;
+    document.getElementById('sVal').textContent = cfg.speed.toFixed(1) + '×';
+    setSpeed();
+  });
+  push.addEventListener('input', () => {
+    cfg.push = +push.value;
+    document.getElementById('pVal').textContent = cfg.push + 'px';
+  });
+  // 调完粘稠度松手时原地戳一下，马上能对比出水和蜂蜜的区别
+  visc.addEventListener('change', () => poke(c0x, c0y - R, 1.1));
+  document.getElementById('replay').addEventListener('click', runDemo);
+
+  measure();
+  window.addEventListener('resize', () => { measure(); if (reduce) renderStatic(); });
+
+  // 减少动态：不跑每帧循环，画一帧静止的形状，液滴停在半融合的位置，交互只留涟漪反馈
+  function renderStatic() {
+    center.x = c0x; center.y = c0y;
+    for (let i = 0; i < N; i++) r[i] = R * (1 + 0.085 * wobble(i, 0.8));
+    drops.forEach((p, i) => { p.d = [1.05, 0.95, 1.12, 0.9][i]; });
+    draw();
+  }
+
+  if (reduce) {
+    renderStatic();
+    tip.textContent = '已开启「减少动态」，只显示静止的形状';
+    document.getElementById('replay').disabled = true;
+  } else {
+    startDrops();
+    gsap.ticker.add(() => {
+      step(Math.min(gsap.ticker.deltaRatio(60), 4));
+      draw();
+    });
+    // 入场：半径从 0 弹出来。顶点是弹簧，会比 grow 慢半拍跟上，落地时自带一下果冻般的晃动
+    gsap.timeline({ delay: 0.15 })
+      .to(life, { grow: 1, duration: 1.4, ease: 'elastic.out(1, 0.55)' })
+      .from(tip, { opacity: 0, duration: 0.6 }, 0.5)
+      .call(runDemo, null, 0.9);
+  }
+</script>
+
+<!-- 图鉴浮条：返回图鉴 + 把这个 demo 的链接和提示词复制给 AI Agent -->
+<div id="galleryBar">
+  <a href="/" class="gb">← 图鉴</a>
+  <button class="gb" id="gbCopy">⧉ 复制给 AI</button>
+</div>
+<style>
+  #galleryBar {
+    position: fixed; left: 16px; bottom: 16px; z-index: 9999;
+    display: flex; gap: 8px; font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+  }
+  #galleryBar .gb {
+    font-size: 12px; line-height: 1; padding: 8px 12px; border-radius: 8px; cursor: pointer;
+    color: #8b949e; background: rgba(22,27,34,.92); border: 1px solid #30363d;
+    text-decoration: none; backdrop-filter: blur(8px); font-family: inherit;
+    transition: color .16s, border-color .16s;
+  }
+  #galleryBar .gb:hover { color: #58e6a8; border-color: #58e6a8; }
+  #galleryBar .gb.done { color: #58e6a8; border-color: rgba(88,230,168,.6); }
+  @media (max-width: 520px) { #galleryBar { left: 10px; bottom: 10px; } }
+</style>
+<script>
+  (function () {
+    var DEMO = 'liquid-blob', TITLE = '液体 Blob';
+    var origin = location.protocol.startsWith('http') ? location.origin : 'https://gsap.leolee0812.site';
+    var text = '参考这个页面：' + origin + '/demos/' + DEMO + '.html\n' +
+      '它用 GSAP 3.13 实现了「' + TITLE + '」，源码里有完整可运行的实现和中文注释。\n' +
+      '请先读取这个链接，弄清它的实现方式（用到哪些插件、时间轴怎么排、缓动怎么选），\n' +
+      '然后把同样的效果复刻到我的项目里：沿用我现有的页面结构和配色，保持一致的节奏和手感。';
+    var btn = document.getElementById('gbCopy');
+    btn.addEventListener('click', function () {
+      var done = function () {
+        btn.textContent = '✓ 已复制，粘给你的 Agent';
+        btn.classList.add('done');
+        clearTimeout(btn._t);
+        btn._t = setTimeout(function () {
+          btn.textContent = '⧉ 复制给 AI';
+          btn.classList.remove('done');
+        }, 2200);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, done);
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+        done();
+      }
+    });
+  })();
+</script>
+</body>
+</html>
