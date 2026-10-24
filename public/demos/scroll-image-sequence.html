@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1117'/%3E%3Cpath d='M9 22c3-9 8-13 14-12' stroke='%2358e6a8' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='23' cy='10' r='3' fill='%233b82f6'/%3E%3C/svg%3E">
+<title>帧序列滚动播放</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  /* 被 pin 住的舞台。svh 让手机地址栏收起时高度不跳 */
+  .stage { position: relative; height: 100vh; height: 100svh; overflow: hidden; }
+  /* 镜头背后一团很淡的光，再铺一层点阵：帧本身是透明底，底色交给页面，换主题不用重出图 */
+  .stage::before {
+    content: ''; position: absolute; inset: 0;
+    background:
+      radial-gradient(circle at 68% 48%, rgba(59,130,246,.13), transparent 42%),
+      radial-gradient(circle at 70% 60%, rgba(88,230,168,.07), transparent 38%),
+      radial-gradient(circle, rgba(255,255,255,.04) 1px, transparent 1.5px) 0 0 / 22px 22px;
+  }
+
+  .view {
+    position: absolute; right: 4vw; top: 50%;
+    width: min(82vh, 58vw); aspect-ratio: 1; transform: translateY(-50%);
+  }
+  .view canvas { width: 100%; height: 100%; display: block; }
+
+  /* 左侧文字槽：开场标题和三段章节说明叠在同一个位置，轮流出场 */
+  .slot {
+    position: absolute; left: max(6vw, 24px); top: 50%; transform: translateY(-50%);
+    width: min(440px, 36vw); height: 300px; pointer-events: none;
+  }
+  .block { position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 100%; }
+  .chap { opacity: 0; visibility: hidden; }
+  .eyebrow {
+    display: inline-block; font-size: 12px; letter-spacing: .14em; color: #58e6a8;
+    padding: 6px 12px; border: 1px solid rgba(88,230,168,.35); border-radius: 999px;
+    background: rgba(13,17,23,.4);
+  }
+  h1 {
+    margin-top: 20px; font-size: clamp(38px, 5.2vw, 72px); font-weight: 800;
+    letter-spacing: -.02em; line-height: 1.06;
+  }
+  h1 .line { display: block; }
+  h1 em { font-style: normal; color: #58e6a8; }
+  .sub { margin-top: 18px; font-size: clamp(14px, 1.3vw, 16px); line-height: 1.75; color: #8b949e; }
+  .sub b { color: #e6edf3; font-weight: 600; }
+
+  .chap .no { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: #3b82f6; letter-spacing: .1em; }
+  .chap h2 { margin-top: 10px; font-size: clamp(28px, 3.4vw, 46px); font-weight: 800; letter-spacing: -.01em; line-height: 1.12; }
+  .chap h2 em { font-style: normal; color: #58e6a8; }
+  .chap p { margin-top: 14px; font-size: 15px; line-height: 1.75; color: #8b949e; }
+  .chap code { color: #58e6a8; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+
+  /* 底部胶片条：每一格是一帧，亮了说明解码好了，最亮那格是当前帧 */
+  .hud {
+    position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%);
+    width: min(420px, calc(100vw - 40px));
+    font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: #8b949e;
+  }
+  .hud .top { display: flex; justify-content: space-between; margin-bottom: 8px; }
+  .hud .top b { color: #58e6a8; font-weight: 500; }
+  .strip { display: flex; gap: 1px; height: 12px; }
+  .strip i {
+    flex: 1; border-radius: 1px; background: #21262d;
+    transition: background-color .25s;
+  }
+  .strip i.ok { background: rgba(88,230,168,.28); }
+  .strip i.skip { background: #161b22; }
+  .strip i.cur { background: #58e6a8; box-shadow: 0 0 8px rgba(88,230,168,.8); }
+  .hint { display: inline-flex; align-items: center; gap: 6px; }
+  .hint i { display: inline-block; width: 1px; height: 12px; background: linear-gradient(#e6edf3, transparent); transform-origin: top; }
+
+  /* 参数面板：和图鉴其他滚动类 demo 同一套，手机上收成两个按钮 */
+  .panel {
+    position: fixed; top: 14px; right: 14px; z-index: 20;
+    display: flex; align-items: center; gap: 18px;
+    background: rgba(22,27,34,.86); border: 1px solid #30363d; border-radius: 14px;
+    padding: 10px 12px 10px 16px; backdrop-filter: blur(10px);
+    box-shadow: 0 10px 30px rgba(0,0,0,.35);
+  }
+  .panel .body { display: flex; align-items: center; gap: 18px; }
+  .ctrl { display: flex; flex-direction: column; gap: 4px; }
+  .ctrl label, .ctrl .lb { font-size: 12px; color: #8b949e; display: flex; justify-content: space-between; gap: 10px; }
+  .val { color: #58e6a8; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+  input[type=range] { width: 130px; accent-color: #58e6a8; }
+  .seg { display: flex; gap: 4px; }
+  .seg button {
+    background: #0d1117; color: #8b949e; border: 1px solid #30363d; border-radius: 8px;
+    padding: 4px 9px; font: 12px ui-monospace, Menlo, monospace; cursor: pointer;
+    transition: color .16s, border-color .16s;
+  }
+  .seg button.on { color: #58e6a8; border-color: #58e6a8; }
+  .head { display: flex; gap: 8px; }
+  .btn {
+    background: #58e6a8; color: #0d1117; border: 0; border-radius: 20px;
+    padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+    font-family: inherit; transition: transform .16s, box-shadow .16s;
+  }
+  .btn:hover { box-shadow: 0 0 20px rgba(88,230,168,.4); }
+  .btn:active { transform: scale(.96); }
+  .btn:disabled { opacity: .5; cursor: default; box-shadow: none; }
+  .btn.ghost { background: #0d1117; color: #8b949e; border: 1px solid #30363d; display: none; }
+  .btn.ghost.on { color: #58e6a8; border-color: #58e6a8; }
+
+  .after { position: relative; max-width: 960px; margin: 0 auto; padding: 12vh 20px 22vh; }
+  .after h2 { font-size: clamp(22px, 3vw, 30px); font-weight: 700; }
+  .after h2 span { color: #58e6a8; }
+  .after > p { margin-top: 10px; color: #8b949e; font-size: 15px; line-height: 1.7; max-width: 640px; }
+  .grid { margin-top: 32px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .tip { background: #161b22; border: 1px solid #30363d; border-radius: 14px; padding: 20px; }
+  .tip .n { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: #3b82f6; }
+  .tip h3 { margin-top: 8px; font-size: 16px; }
+  .tip p { margin-top: 8px; font-size: 13px; line-height: 1.75; color: #8b949e; }
+  .tip code, .after code { color: #58e6a8; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+
+  @media (max-width: 760px) {
+    .panel { top: 10px; right: 10px; flex-wrap: wrap; gap: 10px; padding: 8px 8px 8px 12px; justify-content: flex-end; }
+    .panel .body { display: none; order: 3; width: 100%; flex-wrap: wrap; gap: 12px 18px; padding: 4px 4px 6px 0; }
+    .panel.open { left: 10px; }
+    .panel.open .body { display: flex; }
+    .btn.ghost { display: inline-block; }
+    .ctrl { flex: 1 1 140px; }
+    input[type=range] { width: 100%; }
+    .grid { grid-template-columns: 1fr; }
+
+    /* 竖屏：文字在上，镜头在中，胶片条压在图鉴浮条上方 */
+    .slot { left: 20px; right: 20px; top: 66px; transform: none; width: auto; height: 190px; }
+    .block { top: 0; transform: none; }
+    h1 { margin-top: 14px; font-size: 34px; }
+    .sub { margin-top: 10px; font-size: 14px; line-height: 1.65; }
+    .chap h2 { font-size: 28px; }
+    .chap p { font-size: 14px; margin-top: 10px; }
+    .view { right: auto; left: 50%; top: auto; bottom: 124px; transform: translateX(-50%); width: min(calc(100vw - 16px), calc(100svh - 360px)); }
+    .hud { bottom: 58px; }
+  }
+</style>
+</head>
+<body>
+  <div class="panel" id="panel">
+    <div class="body">
+      <div class="ctrl">
+        <label>scrub 阻尼 <span class="val" id="sVal">0.5s</span></label>
+        <input type="range" id="scrub" min="0" max="2" step="0.1" value="0.5" aria-label="scrub 阻尼">
+      </div>
+      <div class="ctrl">
+        <span class="lb">实际用到的帧数</span>
+        <div class="seg" id="seg">
+          <button data-n="12">12</button><button data-n="30">30</button><button data-n="120" class="on">120</button>
+        </div>
+      </div>
+    </div>
+    <div class="head">
+      <button class="btn ghost" id="toggle" aria-expanded="false">⚙ 参数</button>
+      <button class="btn" id="play">▶ 演示一遍</button>
+    </div>
+  </div>
+
+  <section class="stage" id="stage">
+    <div class="view" id="view"><canvas id="cv" aria-label="镜头拆解帧序列"></canvas></div>
+
+    <div class="slot">
+      <div class="block" id="intro">
+        <span class="eyebrow">ScrollTrigger · 帧序列</span>
+        <h1><span class="line">帧序列</span><span class="line"><em>滚动播放</em></span></h1>
+        <p class="sub">往下滚，<b>120 张预渲染的画面</b>按滚动进度一帧帧换上去：镜头转身、沿光轴拆开、再把光圈收紧。</p>
+      </div>
+      <div class="block chap">
+        <span class="no">01 / 03 · 转身</span>
+        <h2>从正面<br>转到<em>侧面</em></h2>
+        <p>每一帧都是一张完整的图。滚动条只负责算「现在该是第几张」，然后整张换上去。</p>
+      </div>
+      <div class="block chap">
+        <span class="no">02 / 03 · 拆解</span>
+        <h2>八个部件<br>沿<em>光轴</em>拉开</h2>
+        <p>复杂的 3D 和光影全在出图时算好，页面上只剩一次 <code>drawImage</code>，手机也跑得动。</p>
+      </div>
+      <div class="block chap">
+        <span class="no">03 / 03 · 收光圈</span>
+        <h2>f/1.4 收到<br><em>f/11</em></h2>
+        <p>镜头回正一点，九片叶片一边收一边转。往回滚，所有帧倒着放，光圈重新打开、镜头合拢。</p>
+      </div>
+    </div>
+
+    <div class="hud">
+      <div class="top">
+        <span class="hint" id="hint"><i></i>向下滚动</span>
+        <span>frame <b id="fNo">001</b> / 120 · <span id="load">解码 0</span></span>
+      </div>
+      <div class="strip" id="strip"></div>
+    </div>
+  </section>
+
+  <section class="after">
+    <h2>这一屏，<span>就是一叠图片在换</span></h2>
+    <p>苹果产品页上那些「转一圈、拆开、再合上」的镜头，大多不是实时 3D，而是一串预先渲染好的图片。这里的 120 帧是打开页面时用 canvas 现画、再编码成 webp 的，加载和播放的写法和从服务器拉 <code>frame_001.webp</code> 完全一样。</p>
+    <div class="grid">
+      <div class="tip">
+        <span class="n">01</span>
+        <h3>先解码，再上屏</h3>
+        <p>每张图都 <code>await img.decode()</code> 之后才算「到了」。没解码的图直接 drawImage 会在滚动那一帧同步解码，掉帧就出在这里。</p>
+      </div>
+      <div class="tip">
+        <span class="n">02</span>
+        <h3>先粗后细地加载</h3>
+        <p>按 0、64、32、96… 的顺序取帧，而不是从头排队。刚加载一半时用户随便滚到哪，附近都有一张能顶上，画面不会卡在黑屏。</p>
+      </div>
+      <div class="tip">
+        <span class="n">03</span>
+        <h3>帧号变了才画</h3>
+        <p>scrub 每帧都会回调，但进度换算成整数帧号后，大多数回调帧号没变。只在帧号变化时 drawImage，滚得再快也不白画。</p>
+      </div>
+    </div>
+  </section>
+
+<script src="../lib/gsap.min.js"></script>
+<script src="../lib/ScrollTrigger.min.js"></script>
+<script src="../lib/ScrollToPlugin.min.js"></script>
+<script>
+  gsap.registerPlugin(ScrollTrigger, ScrollToPlugin);
+  // 手机地址栏收放会改 innerHeight，忽略这类 resize，pin 才不会滚到一半重算抖一下
+  ScrollTrigger.config({ ignoreMobileResize: true });
+
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const $ = id => document.getElementById(id);
+  const N = 120, RES = 900;         // 帧数和每帧边长。900px 在 2 倍屏上大约撑得起 450px 宽的显示区
+  const frames = new Array(N);      // 解码好的 Image，没到的位置是 undefined
+
+  // =====================================================================
+  // 一、出图：把一只镜头的 120 个姿态画出来。
+  // 真实项目里这一步在 Blender / C4D 里完成，这里用 canvas 现画，只为了离线可跑。
+  // 页面后半段的「加载、播放」代码和这里无关，换成真图片一行都不用改。
+  // =====================================================================
+  const clamp01 = v => Math.max(0, Math.min(1, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  // 直接借 GSAP 的缓动函数算每帧姿态，出图的节奏和页面上其他动画是同一套语言
+  const eIO = gsap.parseEase('sine.inOut'), eP = gsap.parseEase('power2.inOut');
+
+  // 光从左上方打来；H 是 Blinn-Phong 的半程向量，用来算高光
+  const norm = v => { const l = Math.hypot(...v); return v.map(x => x / l); };
+  const L = norm([-0.45, -0.6, 0.66]), H = norm([L[0], L[1], L[2] + 1]);
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  // 金属的明暗 = 漫反射 + 一道窄高光 + 右侧一点主色蓝的环境反光，三项加起来才有「金属感」
+  function shade(base, n, spec = 0.9, alpha = 1) {
+    const lam = Math.max(0, dot(n, L)), sp = Math.pow(Math.max(0, dot(n, H)), 28) * spec;
+    const env = Math.max(0, n[0]) * 0.18;
+    const c = base.map((b, i) => Math.round(Math.min(255, b * (0.25 + 0.95 * lam) + 255 * sp + [59, 130, 246][i] * env)));
+    return `rgba(${c[0]},${c[1]},${c[2]},${alpha})`;
+  }
+
+  // 镜头从后往前的八个部件。z 是沿光轴的位置，拆解时以 ZC 为中心按倍数拉开
+  const ZC = 24;
+  const PARTS = [
+    { k: 'board', z0: -84, z1: -72, w: 250 },
+    { k: 'barrel', z0: -60, z1: -28, r: 150, base: [58, 64, 74] },
+    { k: 'glass', z0: -18, z1: -6, r: 112 },
+    { k: 'aperture', z0: 6, z1: 12, r: 138 },
+    { k: 'glass', z0: 24, z1: 38, r: 128 },
+    { k: 'barrel', z0: 50, z1: 84, r: 166, base: [30, 33, 39], knurl: true },
+    { k: 'glass', z0: 94, z1: 112, r: 146, big: true },
+    { k: 'ring', z0: 118, z1: 130, r: 172, ri: 150 }
+  ];
+
+  function drawFrame(c, p) {
+    // 三段姿态共用一条 0→1 的进度，段与段之间故意重叠一点，转身还没完就开始拆，看起来是一个连贯动作
+    // 收光圈时再往回转 20°，让光圈那一面多朝向观众一点，不然侧着看几乎看不出孔在变小
+    const back = eIO(clamp01((p - 0.7) / 0.26));
+    const th = (lerp(-24, 58, eIO(clamp01(p / 0.42))) - 20 * back) * Math.PI / 180;
+    const ex = eP(clamp01((p - 0.34) / 0.4));
+    const spread = 1 + 1.75 * ex;
+    const ap = lerp(112, 30, eIO(clamp01((p - 0.74) / 0.22)));
+    const s = Math.sin(th), co = Math.cos(th);
+
+    c.setTransform(RES / 1000, 0, 0, RES / 1000, 0, 0);
+    c.clearRect(0, 0, 1000, 1000);
+    c.translate(500, 468);
+    const k = lerp(1.38, 1.2, ex);   // 拆开后整体变宽，同步缩一点，保证两头不出画
+    c.scale(k, k);
+
+    // 地面阴影：压扁的径向渐变，跟着拆解变宽变淡
+    c.save(); c.translate(0, 300); c.scale(1, 0.1);
+    const sw = 250 + 170 * ex;
+    const sg = c.createRadialGradient(0, 0, 0, 0, 0, sw);
+    sg.addColorStop(0, `rgba(0,0,0,${0.55 - 0.15 * ex})`); sg.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = sg; c.beginPath(); c.arc(0, 0, sw, 0, 7); c.fill(); c.restore();
+
+    // 只绕竖轴转，所以每个圆面投影成「横向压扁 cosθ、圆心右移 z·sinθ」的椭圆；
+    // 所有部件同轴，从后往前画就是正确的遮挡关系，不用做深度排序
+    for (const P of PARTS) {
+      const off = ((P.z0 + P.z1) / 2 - ZC) * (spread - 1);
+      const a = P.z0 - ZC + off, b = P.z1 - ZC + off;
+      if (P.k === 'board') drawBoard(c, P, a, b, s, co);
+      else {
+        side(c, P, a, b, s, co);
+        c.save(); c.translate(b * s, 0); c.scale(co, 1);
+        face(c, P, s, co, th, ap);
+        c.restore();
+      }
+    }
+  }
+
+  // 圆柱侧面切成竖条，每条按自己的法线单独打光，弧面上的高光就自然顺着转
+  function side(c, P, a, b, s, co) {
+    if (Math.abs(s) < 0.01) return;
+    const M = P.knurl ? 120 : 64, r = P.r;
+    for (let j = 0; j < M; j++) {
+      const f0 = j / M * Math.PI * 2, f1 = (j + 1) / M * Math.PI * 2, fm = (f0 + f1) / 2;
+      const n = [Math.cos(fm) * co, Math.sin(fm), -Math.cos(fm) * s];
+      if (n[2] <= 0) continue;          // 背对镜头的那半圈不画
+      const x = f => r * Math.cos(f) * co, y = f => r * Math.sin(f);
+      let col;
+      if (P.k === 'glass') col = shade([40, 80, 110], n, 0.7, 0.8);
+      else if (P.knurl) col = shade(P.base.map(v => v * (j % 2 ? 0.55 : 1.2)), n, j % 2 ? 0.2 : 0.7);
+      else col = shade(P.base || [70, 76, 86], n);
+      c.fillStyle = c.strokeStyle = col;
+      c.lineWidth = 0.8;                // 同色描一圈细边，盖住相邻竖条之间的抗锯齿缝
+      c.beginPath();
+      c.moveTo(x(f0) + a * s, y(f0)); c.lineTo(x(f1) + a * s, y(f1));
+      c.lineTo(x(f1) + b * s, y(f1)); c.lineTo(x(f0) + b * s, y(f0));
+      c.closePath(); c.fill(); c.stroke();
+    }
+  }
+
+  function ring(c, ro, ri) {
+    c.beginPath(); c.arc(0, 0, ro, 0, Math.PI * 2); c.arc(0, 0, ri, 0, Math.PI * 2, true);
+  }
+  // 正面朝向固定是 (sinθ, 0, cosθ)，再叠一层斜向渐变模拟拉丝，转动时整面会有明暗变化
+  function metalFace(c, base, r, s, co) {
+    const lit = shade(base, [s, 0, co], 0.5);
+    const g = c.createLinearGradient(-r, -r, r, r);
+    g.addColorStop(0, 'rgba(255,255,255,.16)'); g.addColorStop(.5, 'rgba(255,255,255,0)'); g.addColorStop(1, 'rgba(0,0,0,.3)');
+    return [lit, g];
+  }
+
+  function face(c, P, s, co, th, ap) {
+    const r = P.r;
+    if (P.k === 'glass') {
+      // 玻璃半透明，后面的光圈和传感器能透出来，正面看才有纵深
+      const g = c.createRadialGradient(-0.3 * r, -0.35 * r, 0, 0, 0, r * 1.15);
+      g.addColorStop(0, 'rgba(120,175,255,.32)'); g.addColorStop(.5, 'rgba(18,40,74,.5)'); g.addColorStop(1, 'rgba(5,10,22,.82)');
+      c.fillStyle = g; c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2); c.fill();
+      c.save(); c.clip();
+      // 镀膜反光：两道偏色的弧，随镜头转动反向滑过镜片
+      c.lineWidth = r * 0.16;
+      c.strokeStyle = 'rgba(88,230,168,.13)';
+      c.beginPath(); c.arc(0.4 * r - th * 0.5 * r, 0.3 * r, r * 0.95, 0, Math.PI * 2); c.stroke();
+      c.strokeStyle = 'rgba(150,120,255,.1)';
+      c.beginPath(); c.arc(-0.45 * r - th * 0.3 * r, 0.5 * r, r * 1.05, 0, Math.PI * 2); c.stroke();
+      // 主高光
+      const hx = -0.36 * r - th * 0.42 * r, hy = -0.42 * r;
+      const hg = c.createRadialGradient(hx, hy, 0, hx, hy, r * 0.32);
+      hg.addColorStop(0, `rgba(255,255,255,${P.big ? 0.6 : 0.4})`); hg.addColorStop(1, 'rgba(255,255,255,0)');
+      c.fillStyle = hg; c.beginPath(); c.ellipse(hx, hy, r * 0.32, r * 0.18, -0.6, 0, Math.PI * 2); c.fill();
+      c.restore();
+      c.lineWidth = 2.5; c.strokeStyle = 'rgba(200,230,255,.28)';
+      c.beginPath(); c.arc(0, 0, r - 1, 0, Math.PI * 2); c.stroke();
+      c.lineWidth = 1; c.strokeStyle = 'rgba(255,255,255,.07)';
+      c.beginPath(); c.arc(0, 0, r * 0.9, 0, Math.PI * 2); c.stroke();
+    } else if (P.k === 'aperture') {
+      // 九边形的孔，叶片收拢时整体跟着转一点，这是真实光圈的样子
+      const rot = (112 - ap) * 0.018, pts = [];
+      for (let i = 0; i < 9; i++) { const t = rot + i / 9 * Math.PI * 2; pts.push([Math.cos(t) * ap, Math.sin(t) * ap]); }
+      c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2);
+      c.moveTo(...pts[0]); pts.slice(1).forEach(q => c.lineTo(...q)); c.closePath();
+      c.fillStyle = '#1a2029'; c.fill('evenodd');
+      c.strokeStyle = 'rgba(255,255,255,.14)'; c.lineWidth = 1.2;
+      pts.forEach((q, i) => {
+        const t = rot + i / 9 * Math.PI * 2 + 1.05;
+        c.beginPath(); c.moveTo(...q); c.lineTo(Math.cos(t) * r * 0.96, Math.sin(t) * r * 0.96); c.stroke();
+      });
+      c.strokeStyle = 'rgba(88,230,168,.75)'; c.lineWidth = 2;
+      c.beginPath(); c.moveTo(...pts[0]); pts.slice(1).forEach(q => c.lineTo(...q)); c.closePath(); c.stroke();
+    } else if (P.k === 'barrel') {
+      const [lit, g] = metalFace(c, P.base, r, s, co);
+      ring(c, r, r - 16); c.fillStyle = lit; c.fill('evenodd'); c.fillStyle = g; c.fill('evenodd');
+      c.fillStyle = 'rgba(4,6,10,.5)'; c.beginPath(); c.arc(0, 0, r - 16, 0, Math.PI * 2); c.fill();
+    } else if (P.k === 'ring') {
+      const [lit, g] = metalFace(c, [92, 100, 112], r, s, co);
+      ring(c, r, P.ri); c.fillStyle = lit; c.fill('evenodd'); c.fillStyle = g; c.fill('evenodd');
+      // 刻度：每 5 格一根长的，像镜头前圈上的刻字
+      c.strokeStyle = 'rgba(230,237,243,.45)';
+      for (let i = 0; i < 72; i++) {
+        const t = i / 72 * Math.PI * 2, l = i % 6 ? 4 : 9;
+        c.lineWidth = i % 6 ? 1 : 1.6;
+        c.beginPath(); c.moveTo(Math.cos(t) * (P.ri + 3), Math.sin(t) * (P.ri + 3));
+        c.lineTo(Math.cos(t) * (P.ri + 3 + l), Math.sin(t) * (P.ri + 3 + l)); c.stroke();
+      }
+      c.strokeStyle = '#58e6a8'; c.lineWidth = 2.6;
+      c.beginPath(); c.arc(0, 0, r - 5, 0, Math.PI * 2); c.stroke();
+    }
+  }
+
+  // 最后面的传感器板：方形，只有一条侧边可见（朝哪边看 θ 的正负）
+  function drawBoard(c, P, a, b, s, co) {
+    const h = P.w / 2, xe = s > 0 ? -h : h;
+    if (Math.abs(s) > 0.01) {
+      c.fillStyle = shade([40, 46, 54], [xe > 0 ? co : -co, 0, xe > 0 ? -s : s], 0.4);
+      c.beginPath();
+      c.moveTo(xe * co + a * s, -h); c.lineTo(xe * co + b * s, -h);
+      c.lineTo(xe * co + b * s, h); c.lineTo(xe * co + a * s, h); c.closePath(); c.fill();
+    }
+    c.save(); c.translate(b * s, 0); c.scale(co, 1);
+    c.fillStyle = '#121820'; c.strokeStyle = '#30363d'; c.lineWidth = 2;
+    c.beginPath(); c.roundRect(-h, -h, P.w, P.w, 14); c.fill(); c.stroke();
+    c.fillStyle = 'rgba(214,180,110,.55)';
+    for (let i = 0; i < 12; i++) {
+      const t = -h + 22 + i * (P.w - 44) / 11;
+      [[t, -h + 12], [t, h - 12], [-h + 12, t], [h - 12, t]].forEach(([x, y]) => c.fillRect(x - 3, y - 3, 6, 6));
+    }
+    const g = c.createLinearGradient(-62, -62, 62, 62);
+    g.addColorStop(0, '#58e6a8'); g.addColorStop(.55, '#2a9d8f'); g.addColorStop(1, '#3b82f6');
+    c.fillStyle = g; c.fillRect(-62, -62, 124, 124);
+    c.strokeStyle = 'rgba(5,10,20,.28)'; c.lineWidth = 1;
+    for (let i = -56; i < 62; i += 8) {
+      c.beginPath(); c.moveTo(i, -62); c.lineTo(i, 62); c.moveTo(-62, i); c.lineTo(62, i); c.stroke();
+    }
+    const sh = c.createLinearGradient(-62, -62, 40, 20);
+    sh.addColorStop(0, 'rgba(255,255,255,.35)'); sh.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = sh; c.fillRect(-62, -62, 124, 124);
+    c.restore();
+  }
+
+  // =====================================================================
+  // 二、加载：和真实项目一样，每帧是一张独立图片，解码完才算到位
+  // =====================================================================
+  // 先粗后细：0、64、32、96、16… 每一轮把间隔减半。加载到一半时时间轴上已经均匀撒满了帧
+  function loadOrder(n) {
+    const seen = new Set(), out = [];
+    for (let step = 64; step >= 1; step >>= 1)
+      for (let i = 0; i < n; i += step) if (!seen.has(i)) { seen.add(i); out.push(i); }
+    return out;
+  }
+
+  const strip = $('strip');
+  strip.innerHTML = '<i></i>'.repeat(N);
+  const ticks = [...strip.children];
+  let loaded = 0;
+
+  async function makeFrames(list) {
+    const work = document.createElement('canvas');
+    work.width = work.height = RES;
+    const wc = work.getContext('2d');
+    for (const i of list) {
+      drawFrame(wc, i / (N - 1));
+      // webp 编码在浏览器后台线程里做，await 期间主线程空出来，页面照样能滚
+      const blob = await new Promise(r => work.toBlob(r, 'image/webp', 0.86));
+      const img = new Image();
+      img.src = URL.createObjectURL(blob);
+      await img.decode();
+      frames[i] = img;
+      ticks[i].classList.add('ok');
+      $('load').textContent = ++loaded < N ? `解码 ${loaded}` : '全部就绪';
+      // 刚好是当前该显示的帧（或比现在顶着的那张更近），立刻换上
+      if (Math.abs(i - want) < Math.abs(shown - want) || shown < 0) render(true);
+    }
+  }
+
+  // =====================================================================
+  // 三、播放：滚动进度 → 帧号 → drawImage
+  // =====================================================================
+  const cv = $('cv'), ctx = cv.getContext('2d');
+  let want = 0, shown = -1, drawn = null, step = 1, curTick = null;
+
+  function fit() {
+    // 画布像素 = 显示尺寸 × 像素比，但不超过帧本身的分辨率，再大也是放大糊图
+    const box = cv.getBoundingClientRect().width;
+    const px = Math.min(RES, Math.round(box * Math.min(devicePixelRatio || 1, 2)));
+    if (cv.width !== px) { cv.width = cv.height = px; drawn = null; render(true); }
+  }
+
+  // 该显示的帧还没到，就找离它最近的已到帧顶上
+  function nearest(i) {
+    for (let d = 0; d < N; d++) {
+      if (frames[i - d]) return i - d;
+      if (frames[i + d]) return i + d;
+    }
+    return -1;
+  }
+
+  function render(force) {
+    const i = nearest(want);
+    if (i < 0 || (!force && i === shown)) return;
+    shown = i;
+    if (drawn !== frames[i]) {
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      ctx.drawImage(frames[i], 0, 0, cv.width, cv.height);
+      drawn = frames[i];
+    }
+    $('fNo').textContent = String(want + 1).padStart(3, '0');
+    if (curTick) curTick.classList.remove('cur');
+    curTick = ticks[want]; curTick.classList.add('cur');
+  }
+
+  // 「实际用到的帧数」：把 0~119 的帧号量化到更粗的格子上，模拟只出 12 / 30 张图时的顿挫感
+  function setFrame(p) {
+    const n = N / step;
+    const i = Math.round(Math.round(p * (n - 1)) * (N - 1) / (n - 1));
+    if (i === want) return;
+    want = i;
+    render();
+  }
+  function markSkip() {
+    const n = N / step, used = new Set();
+    for (let j = 0; j < n; j++) used.add(Math.round(j * (N - 1) / (n - 1)));
+    ticks.forEach((t, i) => t.classList.toggle('skip', !used.has(i)));
+  }
+
+  // 一条 scrub 时间轴：帧号和三段文字都挂在上面，进度完全交给滚动条
+  const cfg = { scrub: 0.5 };
+  const play = { p: 0 };
+  let tlCtx, st;
+  function build() {
+    if (tlCtx) tlCtx.revert();
+    tlCtx = gsap.context(() => {
+      const chaps = gsap.utils.toArray('.chap');
+      const tl = gsap.timeline({
+        defaults: { ease: 'none' },
+        scrollTrigger: {
+          trigger: '#stage', start: 'top top', end: '+=320%',
+          pin: true, anticipatePin: 1,
+          // 0 当作 true：完全跟手。帧序列一般给一点阻尼，帧与帧之间的跳变会被时间抹平
+          scrub: cfg.scrub || true
+        }
+      });
+      // 帧号必须线性跟着滚动走，节奏已经在出图时用缓动烘进了每一帧，这里再加缓动就叠两层了
+      tl.to(play, { p: 1, duration: 1, onUpdate: () => setFrame(play.p) }, 0)
+        .to('#intro', { y: -24, autoAlpha: 0, duration: 0.07, ease: 'power1.in' }, 0.01)
+        .to('#hint', { autoAlpha: 0, duration: 0.04 }, 0);
+      // 每段文字的出入场时间对齐画面上那段动作：转身 0.08~0.36、拆解 0.4~0.7、收光圈 0.76 之后
+      [[0.08, 0.34], [0.4, 0.68], [0.76, 2]].forEach(([inAt, outAt], i) => {
+        tl.fromTo(chaps[i], { y: 28, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.06, ease: 'power2.out' }, inAt);
+        if (outAt < 1) tl.to(chaps[i], { y: -24, autoAlpha: 0, duration: 0.05, ease: 'power1.in' }, outAt);
+      });
+      st = tl.scrollTrigger;
+    });
+  }
+
+  // ---------- 控件 ----------
+  $('scrub').addEventListener('input', e => {
+    const v = +e.target.value;
+    $('sVal').textContent = v ? v.toFixed(1) + 's' : '跟手';
+  });
+  // scrub 在 ScrollTrigger 创建时定死，只能重建；放在 change 里，拖滑块的过程中不反复重建
+  $('scrub').addEventListener('change', e => {
+    cfg.scrub = +e.target.value;
+    if (reduce) return;
+    const y = scrollY;
+    build();
+    ScrollTrigger.refresh();
+    scrollTo(0, y);
+  });
+  $('seg').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b || reduce) return;
+    [...$('seg').children].forEach(x => x.classList.toggle('on', x === b));
+    step = N / +b.dataset.n;
+    markSkip();
+    want = -1; setFrame(play.p);
+  });
+  $('toggle').addEventListener('click', e => {
+    const open = $('panel').classList.toggle('open');
+    e.currentTarget.classList.toggle('on', open);
+    e.currentTarget.setAttribute('aria-expanded', open);
+  });
+
+  // 演示：先回到顶，再匀速滚完整段。autoKill 让用户一伸手滚动就把控制权还回去
+  let demo;
+  $('play').addEventListener('click', () => {
+    if (reduce || !st) return;
+    if (demo) demo.kill();
+    demo = gsap.timeline()
+      .to(window, { scrollTo: { y: 0, autoKill: true }, duration: scrollY > 4 ? 0.9 : 0, ease: 'power2.inOut' })
+      .to(window, { scrollTo: { y: st.end, autoKill: true }, duration: 6, ease: 'sine.inOut' }, '+=0.3');
+  });
+
+  addEventListener('resize', fit);
+
+  if (reduce) {
+    // 减少动态：不 pin、不 scrub，只出一张拆解后的静帧，文字保留开场那段
+    want = 82;
+    makeFrames([82]);
+    fit();
+    $('play').textContent = '已减少动态';
+    $('play').disabled = true;
+    $('scrub').disabled = true;
+    $('hint').style.display = 'none';
+  } else {
+    fit();
+    makeFrames(loadOrder(N));
+    build();
+    // 入场：镜头从稍远处推近，标题逐行升起，两秒内走完，不耽误用户开始滚
+    gsap.timeline({ defaults: { ease: 'power3.out' } })
+      .from('#cv', { scale: 0.88, autoAlpha: 0, duration: 1.6, ease: 'power2.out' }, 0)
+      .from('.eyebrow', { y: 16, autoAlpha: 0, duration: 0.8 }, 0.15)
+      .from('h1 .line', { yPercent: 60, autoAlpha: 0, duration: 1, stagger: 0.12 }, 0.25)
+      .from('.sub', { y: 16, autoAlpha: 0, duration: 0.8 }, 0.55)
+      .from('.hud', { y: 12, autoAlpha: 0, duration: 0.8 }, 0.7);
+    gsap.fromTo('#hint i', { scaleY: 0 }, { scaleY: 1, duration: 1.1, ease: 'power2.inOut', repeat: -1, repeatDelay: 0.3 });
+  }
+</script>
+
+<!-- 图鉴浮条：返回图鉴 + 把这个 demo 的链接和提示词复制给 AI Agent -->
+<div id="galleryBar">
+  <a href="/" class="gb">← 图鉴</a>
+  <button class="gb" id="gbCopy">⧉ 复制给 AI</button>
+</div>
+<style>
+  #galleryBar {
+    position: fixed; left: 16px; bottom: 16px; z-index: 9999;
+    display: flex; gap: 8px; font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+  }
+  #galleryBar .gb {
+    font-size: 12px; line-height: 1; padding: 8px 12px; border-radius: 8px; cursor: pointer;
+    color: #8b949e; background: rgba(22,27,34,.92); border: 1px solid #30363d;
+    text-decoration: none; backdrop-filter: blur(8px); font-family: inherit;
+    transition: color .16s, border-color .16s;
+  }
+  #galleryBar .gb:hover { color: #58e6a8; border-color: #58e6a8; }
+  #galleryBar .gb.done { color: #58e6a8; border-color: rgba(88,230,168,.6); }
+  @media (max-width: 520px) { #galleryBar { left: 10px; bottom: 10px; } }
+</style>
+<script>
+  (function () {
+    var DEMO = 'scroll-image-sequence', TITLE = '帧序列滚动播放';
+    var origin = location.protocol.startsWith('http') ? location.origin : 'https://gsap.leolee0812.site';
+    var text = '参考这个页面：' + origin + '/demos/' + DEMO + '.html\n' +
+      '它用 GSAP 3.13 实现了「' + TITLE + '」，源码里有完整可运行的实现和中文注释。\n' +
+      '请先读取这个链接，弄清它的实现方式（用到哪些插件、时间轴怎么排、缓动怎么选），\n' +
+      '然后把同样的效果复刻到我的项目里：沿用我现有的页面结构和配色，保持一致的节奏和手感。';
+    var btn = document.getElementById('gbCopy');
+    btn.addEventListener('click', function () {
+      var done = function () {
+        btn.textContent = '✓ 已复制，粘给你的 Agent';
+        btn.classList.add('done');
+        clearTimeout(btn._t);
+        btn._t = setTimeout(function () {
+          btn.textContent = '⧉ 复制给 AI';
+          btn.classList.remove('done');
+        }, 2200);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, done);
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+        done();
+      }
+    });
+  })();
+</script>
+</body>
+</html>
