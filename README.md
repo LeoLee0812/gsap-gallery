@@ -2,7 +2,7 @@
 
 <p>
   <img src="https://img.shields.io/badge/GSAP-3.13-58e6a8?style=flat-square&logo=greensock&logoColor=0d1117" alt="GSAP 3.13">
-  <img src="https://img.shields.io/badge/Demo-78-3b82f6?style=flat-square&logo=html5&logoColor=white" alt="78 个 Demo">
+  <img src="https://img.shields.io/badge/Demo-79-3b82f6?style=flat-square&logo=html5&logoColor=white" alt="79 个 Demo">
   <img src="https://img.shields.io/badge/依赖-0-f0883e?style=flat-square&logo=javascript&logoColor=white" alt="零依赖">
   <img src="https://img.shields.io/github/last-commit/LeoLee0812/gsap-gallery?style=flat-square&logo=github&label=最近更新" alt="最近更新">
   <img src="https://img.shields.io/github/commit-activity/w/LeoLee0812/gsap-gallery?style=flat-square&logo=github&label=本周提交" alt="本周提交">
@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/License-MIT-6e7681?style=flat-square" alt="MIT">
 </p>
 
-**78 个可交互的 GSAP 动效 demo**，按 GreenSock 官方 [gsap-skills](https://github.com/greensock/gsap-skills) 技能库全量覆盖。
+**79 个可交互的 GSAP 动效 demo**，按 GreenSock 官方 [gsap-skills](https://github.com/greensock/gsap-skills) 技能库全量覆盖。
 每个 demo 都是一个独立的 HTML 文件，能直接玩、直接抄，全部离线运行，代码带中文注释。
 
 **每天新增一个**：从 2026-10-18 起每天上线一个新动效，接下来要做的在 [ROADMAP.md](./ROADMAP.md)。
@@ -35,7 +35,7 @@ gsap-gallery/
 │   ├── index.html      # 索引页（带搜索 + 分类筛选，本身也是个 demo）
 │   ├── 404.html
 │   ├── _headers        # lib/ 走一年强缓存
-│   ├── demos/          # 78 个独立 demo，每个都是自包含的单文件
+│   ├── demos/          # 79 个独立 demo，每个都是自包含的单文件
 │   │   ├── ease-visualizer.html
 │   │   ├── scrolltrigger-pin.html
 │   │   └── ...
@@ -54,7 +54,7 @@ gsap-gallery/
 | **核心与手感** | 8 | 缓动曲线、错开节奏、变换属性、关键帧、循环、冲突处理、响应式降级 |
 | **时间轴编排** | 3 | 位置参数、播放控制、嵌套时间轴 |
 | **滚动叙事** | 16 | 触发时机、擦洗、钉住、吸附、批量入场、平滑锚点、视差 |
-| **交互手感** | 16 | 拖拽惯性、统一手势、Flip 布局过渡、磁吸、3D 倾斜 |
+| **交互手感** | 17 | 拖拽惯性、统一手势、Flip 布局过渡、磁吸、3D 倾斜 |
 | **文字动效** | 6 | 逐字、逐行、解码、打字机 |
 | **UI 组件** | 12 | 弹窗、手风琴、标签页、Toast、进度环、跑马灯 |
 | **SVG · 路径 · 物理** | 11 | 描线、形变、路径飞行、抛射、自定义缓动曲线 |

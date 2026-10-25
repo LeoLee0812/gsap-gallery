@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1117'/%3E%3Cpath d='M9 22c3-9 8-13 14-12' stroke='%2358e6a8' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='23' cy='10' r='3' fill='%233b82f6'/%3E%3C/svg%3E">
+<title>拖拽排序列表</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+    min-height: 100vh; padding: 40px 20px 80px;
+    display: flex; flex-direction: column; align-items: center; gap: 22px;
+    overflow-x: hidden;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .sub { font-size: 14px; opacity: .55; margin-top: -12px; text-align: center; line-height: 1.6; }
+
+  .stage {
+    position: relative; width: 100%; max-width: 960px;
+    background:
+      radial-gradient(ellipse at 50% 30%, rgba(88,230,168,.07), transparent 60%),
+      radial-gradient(circle, rgba(255,255,255,.035) 1px, transparent 1.5px) 0 0 / 22px 22px,
+      #161b22;
+    border: 1px solid #30363d; border-radius: 16px;
+    padding: 34px 20px 30px;
+    display: flex; flex-direction: column; align-items: center; gap: 18px;
+  }
+
+  /* 顶部的「完成度」：每一格对应一个位置，放对了就亮，排序过程有了目标感 */
+  .head { width: 100%; max-width: 460px; display: flex; align-items: center; gap: 14px; }
+  .head .ttl { font-size: 13px; color: #8b949e; white-space: nowrap; }
+  .head .ttl b { color: #e6edf3; font-weight: 600; }
+  .meter { flex: 1; display: flex; gap: 5px; }
+  .meter i { flex: 1; height: 5px; border-radius: 3px; background: #30363d; transition: background .35s; }
+  .meter i.on { background: #58e6a8; }
+
+  /* 列表不用文档流排版：每一行都绝对定位在 top:0，位置全靠 transform y。
+     这样「让位」只是改一个 y 值，不触发重排，拖动中 DOM 顺序也一直不变，Draggable 不会被打断 */
+  .list { position: relative; width: 100%; max-width: 460px; }
+  .row {
+    position: absolute; left: 0; right: 0; top: 0; height: var(--h, 64px);
+    display: flex; align-items: center; gap: 12px; padding: 0 14px 0 10px;
+    background: linear-gradient(180deg, #1c232d, #181e27);
+    border: 1px solid #30363d; border-radius: 12px;
+    cursor: grab; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+    box-shadow: 0 2px 6px rgba(0,0,0,.25), 0 0 0 0px rgba(88,230,168,0);
+    will-change: transform;
+  }
+  .row:focus { outline: none; }
+  .row:focus-visible { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.35); }
+  .row.lifted { cursor: grabbing; border-color: rgba(88,230,168,.55); }
+  .grip { width: 14px; display: grid; grid-template-columns: repeat(2, 4px); gap: 3px 4px; opacity: .4; flex: none; }
+  .grip i { width: 4px; height: 4px; border-radius: 50%; background: #e6edf3; }
+  .row.lifted .grip { opacity: .85; }
+  /* 序号显示的是「现在排在第几」，放对了变绿，一边拖一边就知道对不对 */
+  .no {
+    width: 30px; height: 30px; flex: none; border-radius: 9px;
+    display: grid; place-items: center;
+    font: 600 13px ui-monospace, Menlo, monospace; color: #8b949e;
+    background: #0d1117; border: 1px solid #30363d;
+    transition: color .3s, border-color .3s, background .3s;
+  }
+  .row.ok .no { color: #0d1117; background: #58e6a8; border-color: #58e6a8; }
+  .txt { flex: 1; min-width: 0; }
+  .txt b { display: block; font-size: 15px; font-weight: 600; }
+  .txt span { display: block; font-size: 12px; color: #8b949e; margin-top: 3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--c); box-shadow: 0 0 10px var(--c); }
+  .time { font: 12px ui-monospace, Menlo, monospace; color: #6e7681; flex: none; }
+
+  /* 落点预览：虚线框跟着「将要落下的位置」走，比只看别人让位更容易判断 */
+  .ghost {
+    position: absolute; left: 0; right: 0; top: 0; height: var(--h, 64px);
+    border: 1.5px dashed rgba(88,230,168,.5); border-radius: 12px;
+    background: rgba(88,230,168,.05); opacity: 0; pointer-events: none;
+  }
+
+  .tip { font-size: 12px; color: #8b949e; letter-spacing: .5px; text-align: center; min-height: 18px; }
+  .tip.win { color: #58e6a8; }
+
+  .panel {
+    display: flex; gap: 22px 28px; flex-wrap: wrap; justify-content: center; align-items: flex-end;
+    background: #161b22; border: 1px solid #30363d; border-radius: 14px;
+    padding: 16px 22px; max-width: 960px; width: 100%;
+  }
+  .ctrl { display: flex; flex-direction: column; gap: 7px; }
+  .ctrl label { font-size: 12px; opacity: .6; }
+  .ctrl .btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .opt {
+    background: #0d1117; color: #8b949e; border: 1px solid #30363d;
+    border-radius: 7px; padding: 6px 12px; font-size: 13px;
+    font-family: inherit; cursor: pointer; transition: all .16s;
+  }
+  .opt:hover { border-color: #58e6a8; color: #e6edf3; }
+  .opt.on { background: #58e6a8; color: #0d1117; border-color: #58e6a8; font-weight: 600; }
+  input[type=range] { width: 160px; accent-color: #58e6a8; }
+  .val { font-size: 12px; color: #58e6a8; font-family: ui-monospace, Menlo, monospace; }
+  .acts { display: flex; gap: 10px; }
+  .replay {
+    background: #58e6a8; color: #0d1117; border: 0; border-radius: 24px;
+    padding: 10px 22px; font-size: 14px; font-weight: 600; cursor: pointer;
+    font-family: inherit; transition: transform .16s, box-shadow .16s;
+  }
+  .replay:hover { box-shadow: 0 0 22px rgba(88,230,168,.4); }
+  .replay:active { transform: scale(.96); }
+  .replay.ghostbtn { background: transparent; color: #e6edf3; border: 1px solid #30363d; }
+  .replay.ghostbtn:hover { border-color: #3b82f6; box-shadow: 0 0 18px rgba(59,130,246,.3); }
+
+  .note { font-size: 12px; color: #6e7681; text-align: center; max-width: 600px; line-height: 1.7; }
+  .note code { color: #58e6a8; font-family: ui-monospace, Menlo, monospace; }
+
+  @media (max-width: 520px) {
+    body { padding: 28px 14px 72px; gap: 18px; }
+    .stage { padding: 24px 12px 22px; }
+    .row { gap: 10px; padding: 0 12px 0 8px; }
+    .time { display: none; }
+    .panel { padding: 14px 16px; gap: 16px 20px; justify-content: flex-start; }
+    input[type=range] { width: 140px; }
+  }
+</style>
+</head>
+<body>
+  <h1>拖拽排序列表</h1>
+  <p class="sub">按住任意一行上下拖，其他行会平滑让出位置；把手冲咖啡的六步排成正确顺序</p>
+
+  <div class="stage">
+    <div class="head">
+      <span class="ttl">放对 <b id="score">0</b> / 6</span>
+      <div class="meter" id="meter"></div>
+    </div>
+    <div class="list" id="list" role="list" aria-label="手冲咖啡步骤，可拖动排序">
+      <div class="ghost" id="ghost"></div>
+    </div>
+    <p class="tip" id="tip" aria-live="polite">键盘也行：Tab 选中一行，按 ↑ ↓ 挪动</p>
+  </div>
+
+  <div class="panel">
+    <div class="ctrl">
+      <label>让位手感</label>
+      <div class="btns" id="presets">
+        <button class="opt" data-p="crisp">利落</button>
+        <button class="opt on" data-p="back">回弹</button>
+        <button class="opt" data-p="spring">弹簧</button>
+      </div>
+    </div>
+    <div class="ctrl">
+      <label>让位时长 <span class="val" id="dVal">0.35s</span></label>
+      <input type="range" id="dur" min="0.12" max="0.9" step="0.01" value="0.35">
+    </div>
+    <div class="acts">
+      <button class="replay ghostbtn" id="shuffle">⇅ 打乱</button>
+      <button class="replay" id="demo">▶ 演示一遍</button>
+    </div>
+  </div>
+
+  <p class="note">
+    每行都绝对定位，位置只由 <code>y = 序号 × 行高</code> 决定。拖动时用 <code>Draggable</code> 的 y 算出落点序号，
+    序号一变就改数组顺序，再把其余行 <code>gsap.to</code> 到新位置——让位就是这一句。
+    被拿起的行按抓握点做支点，随上下速度轻轻摆动，松手后用同一条缓动落回空位。
+  </p>
+
+<script src="../lib/gsap.min.js"></script>
+<script src="../lib/Draggable.min.js"></script>
+<script>
+  gsap.registerPlugin(Draggable);
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const STEPS = [
+    { t: '烧水',     d: '水温升到 92°C，先开始最省时间',   time: '3:00', c: '#3b82f6' },
+    { t: '磨豆',     d: '15g 中细研磨，像细砂糖',           time: '0:20', c: '#4f9cf0' },
+    { t: '润湿滤纸', d: '热水冲湿滤纸顺便温杯，倒掉',       time: '0:15', c: '#52b9d6' },
+    { t: '闷蒸',     d: '注 30g 水，等粉层鼓起来',          time: '0:30', c: '#55cdbe' },
+    { t: '分段注水', d: '小水流绕圈，注到 240g',            time: '1:30', c: '#58e6a8' },
+    { t: '品尝',     d: '放凉一分钟，酸甜会更清楚',         time: '∞',    c: '#9af0c8' }
+  ];
+  // 开局顺序是写死的「乱序」，不用随机：每次打开都一样，演示路径也能提前设计好
+  const START = [2, 0, 4, 1, 5, 3];
+
+  // 三档手感：yield 是别人让位用的，drop 是自己落回空位用的。
+  // 弹簧档时长要拉长，否则 elastic 还没晃完就被下一次让位打断，看起来像抽搐
+  const PRESETS = {
+    crisp:  { yield: 'power3.out',            drop: 'power3.out',            k: 1 },
+    back:   { yield: 'back.out(1.7)',         drop: 'back.out(2.2)',         k: 1.15 },
+    spring: { yield: 'elastic.out(1, 0.55)',  drop: 'elastic.out(1, 0.45)',  k: 2.4 }
+  };
+  const cfg = { p: PRESETS.back, dur: 0.35 };
+
+  const list = document.getElementById('list');
+  const ghost = document.getElementById('ghost');
+  const meter = document.getElementById('meter');
+  const tip = document.getElementById('tip');
+  const N = STEPS.length;
+  let H = 64, GAP = 10, STEP = H + GAP;
+
+  // ---------- 生成行 ----------
+  const items = STEPS.map((s, i) => {
+    const el = document.createElement('div');
+    el.className = 'row';
+    el.tabIndex = 0;
+    el.setAttribute('role', 'listitem');
+    el.style.setProperty('--c', s.c);
+    el.innerHTML = `<span class="grip">${'<i></i>'.repeat(6)}</span>
+      <span class="no">1</span>
+      <span class="txt"><b>${s.t}</b><span>${s.d}</span></span>
+      <span class="time">${s.time}</span><span class="dot"></span>`;
+    list.appendChild(el);
+    meter.appendChild(document.createElement('i'));
+    return { el, id: i, no: el.querySelector('.no') };
+  });
+  // order[位置] = 行对象；所有「谁在哪」都只看这个数组，DOM 顺序从不改
+  let order = START.map(i => items[i]);
+  const slotY = i => i * STEP;
+
+  function measure() {
+    H = innerWidth <= 520 ? 58 : 64;
+    GAP = innerWidth <= 520 ? 8 : 10;
+    STEP = H + GAP;
+    list.style.setProperty('--h', H + 'px');
+    list.style.height = (N * STEP - GAP) + 'px';
+  }
+
+  // 把除 skip 以外的行送回各自的槽位。overwrite:'auto' 只杀掉 y 上的旧补间，
+  // 连续换位时行会从「半路」直接拐向新目标，不会先跳回去再出发
+  function layout(skip, instant) {
+    order.forEach((it, i) => {
+      if (it === skip) return;
+      const dur = cfg.dur * cfg.p.k;
+      if (instant || reduce) gsap.set(it.el, { y: slotY(i) });
+      else gsap.to(it.el, { y: slotY(i), duration: dur, ease: cfg.p.yield, overwrite: 'auto' });
+    });
+    refresh();
+  }
+
+  // 刷新序号、绿色标记和完成度；只在序号真的变了时才给数字一个小跳动
+  let solved = false;
+  function refresh() {
+    let ok = 0;
+    order.forEach((it, i) => {
+      const txt = String(i + 1);
+      if (it.no.textContent !== txt) {
+        it.no.textContent = txt;
+        if (!reduce) gsap.fromTo(it.no, { scale: 0.6 }, { scale: 1, duration: 0.4, ease: 'back.out(3)', overwrite: true });
+      }
+      const good = it.id === i;
+      it.el.classList.toggle('ok', good);
+      if (good) ok++;
+    });
+    document.getElementById('score').textContent = ok;
+    [...meter.children].forEach((m, i) => m.classList.toggle('on', i < ok));
+    const now = ok === N;
+    if (now && !solved && !dragging) celebrate();
+    if (!now) tip.classList.remove('win');
+    solved = now && !dragging;
+  }
+
+  // 全部放对：从上到下一道波浪轻轻抬起，比弹个窗更像「列表自己松了口气」
+  function celebrate() {
+    tip.textContent = '顺序全对，可以开喝了';
+    tip.classList.add('win');
+    if (reduce) return;
+    order.forEach((it, i) => {
+      gsap.timeline({ delay: i * 0.06 })
+        .to(it.el, { scale: 1.035, duration: 0.18, ease: 'power2.out' })
+        .to(it.el, { scale: 1, duration: 0.6, ease: 'elastic.out(1, 0.4)' });
+    });
+  }
+
+  // ---------- 拿起 / 移动 / 放下：手指拖和自动演示共用这三步 ----------
+  let dragging = null;
+  const tilt = { lever: 0, lastY: 0, rot: null };
+
+  function lift(it, grabX) {
+    dragging = it;
+    it.el.classList.add('lifted');
+    // 拿起的行要压在所有行上面；放下后等它落稳了才降回去，否则落地途中会被邻居盖住
+    gsap.set(it.el, { zIndex: 10 });
+    // 以抓握点为支点：捏着右端往下拖，左端会「拖在后面」，整行顺时针微微倾斜
+    const r = it.el.getBoundingClientRect();
+    const px = gsap.utils.clamp(0, 1, (grabX - r.left) / r.width);
+    tilt.lever = px * 2 - 1;
+    tilt.lastY = +gsap.getProperty(it.el, 'y');
+    gsap.set(it.el, { transformOrigin: `${px * 100}% 50%` });
+    if (!reduce) {
+      gsap.to(it.el, { scale: 1.04, boxShadow: '0 18px 40px rgba(0,0,0,.55), 0 0 0 1px rgba(88,230,168,.25)',
+                       duration: 0.22, ease: 'power2.out', overwrite: 'auto' });
+      tilt.rot = gsap.quickTo(it.el, 'rotation', { duration: 0.35, ease: 'power3.out' });
+      gsap.ticker.add(swing);
+    }
+    gsap.set(ghost, { y: slotY(order.indexOf(it)) });
+    gsap.to(ghost, { opacity: 1, duration: reduce ? 0 : 0.2 });
+  }
+
+  // 每帧按竖直速度算倾角；停住不动时速度为 0，行自己慢慢摆正
+  function swing() {
+    if (!dragging) return;
+    const y = +gsap.getProperty(dragging.el, 'y');
+    const vy = y - tilt.lastY;
+    tilt.lastY = y;
+    tilt.rot(gsap.utils.clamp(-5, 5, vy * tilt.lever * 0.55));
+  }
+
+  // 由拖动中的 y 推出落点序号；只有序号变了才动数组和其他行，拖着不动时零开销
+  function track(it, y) {
+    const to = gsap.utils.clamp(0, N - 1, Math.round(y / STEP));
+    const from = order.indexOf(it);
+    if (to === from) return;
+    order.splice(from, 1);
+    order.splice(to, 0, it);
+    layout(it);
+    gsap.to(ghost, { y: slotY(to), duration: reduce ? 0 : cfg.dur * 0.8, ease: 'power3.out', overwrite: 'auto' });
+  }
+
+  function drop(it) {
+    gsap.ticker.remove(swing);
+    const i = order.indexOf(it);
+    it.el.classList.remove('lifted');
+    dragging = null;
+    const d = reduce ? 0 : Math.max(0.3, cfg.dur * cfg.p.k * 1.2);
+    gsap.to(it.el, { y: slotY(i), scale: 1, rotation: 0,
+                     boxShadow: '0 2px 6px rgba(0,0,0,.25), 0 0 0 0px rgba(88,230,168,0)',
+                     duration: d, ease: cfg.p.drop, overwrite: 'auto',
+                     onComplete: () => gsap.set(it.el, { zIndex: 1 }) });
+    gsap.to(ghost, { opacity: 0, duration: reduce ? 0 : 0.25 });
+    refresh();
+  }
+
+  // ---------- Draggable ----------
+  let demoTl = null;
+  const drags = items.map(it => Draggable.create(it.el, {
+    type: 'y',
+    // 允许拖出列表一点点，但越拖越沉，手感像橡皮筋，松手自然弹回首尾
+    edgeResistance: 0.8,
+    zIndexBoost: false,
+    allowContextMenu: false,
+    onPress(e) {
+      stopDemo();
+      // 正在让位途中的行也能直接抓：先杀掉它身上的补间，再让 Draggable 读一次当前位置
+      gsap.killTweensOf(it.el, 'y');
+      this.update();
+      const p = e.changedTouches ? e.changedTouches[0] : e;
+      lift(it, p.clientX);
+      hideTip();
+    },
+    onDrag() { track(it, this.y); },
+    onRelease() { if (dragging === it) drop(it); }
+  })[0]);
+
+  function setBounds() {
+    drags.forEach(d => d.applyBounds({ minY: 0, maxY: slotY(N - 1) }));
+  }
+
+  // ---------- 键盘：↑ ↓ 一次挪一格，走的是同一套让位动画 ----------
+  items.forEach(it => it.el.addEventListener('keydown', e => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    e.preventDefault();
+    stopDemo();
+    const from = order.indexOf(it);
+    const to = gsap.utils.clamp(0, N - 1, from + (e.key === 'ArrowUp' ? -1 : 1));
+    if (to === from) return;
+    order.splice(from, 1);
+    order.splice(to, 0, it);
+    layout(null);
+    tip.textContent = `「${STEPS[it.id].t}」移到第 ${to + 1} 位`;
+  }));
+
+  let tipHidden = false;
+  function hideTip() {
+    if (tipHidden) return;
+    tipHidden = true;
+    gsap.to(tip, { opacity: 0.6, duration: 0.4 });
+  }
+
+  // ---------- 演示：模拟一只手把「烧水」从中间拖到最上面，再把「品尝」拖到最后 ----------
+  function fakeDrag(tl, it, toIndex, at) {
+    const proxy = { y: 0 };
+    tl.call(() => {
+      if (dragging) drop(dragging);
+      const r = it.el.getBoundingClientRect();
+      lift(it, r.left + r.width * 0.78);
+      proxy.y = +gsap.getProperty(it.el, 'y');
+    }, null, at)
+      // 起手慢、中段快、到位前减速，像人手在找位置；路过每一格时 track 会触发让位
+      .to(proxy, { y: () => slotY(toIndex), duration: 1.1, ease: 'power2.inOut',
+                   onUpdate: () => { gsap.set(it.el, { y: proxy.y }); track(it, proxy.y); } }, at + 0.25)
+      .call(() => drop(it), null, at + 1.55);
+  }
+
+  function stopDemo() {
+    if (!demoTl) return;
+    demoTl.kill(); demoTl = null;
+    if (dragging) drop(dragging);
+  }
+
+  function runDemo() {
+    stopDemo();
+    solved = false;
+    // 先复位成开局的乱序，演示路线才每次都一样
+    order = START.map(i => items[i]);
+    layout(null, reduce);
+    tip.classList.remove('win');
+    tip.textContent = '看它怎么让位……';
+    if (reduce) {
+      order = items.slice();
+      layout(null, true);
+      return;
+    }
+    demoTl = gsap.timeline({ delay: cfg.dur * cfg.p.k + 0.1, onComplete: () => { demoTl = null; } });
+    fakeDrag(demoTl, items[0], 0, 0);
+    fakeDrag(demoTl, items[5], N - 1, 1.9);
+  }
+
+  // ---------- 打乱：每行走到新位置，错开出发，像一副牌被重新码齐 ----------
+  function shuffle() {
+    stopDemo();
+    let next;
+    do { next = gsap.utils.shuffle(items.slice()); }
+    while (next.some((it, i) => it.id === i) && Math.random() < 0.85);
+    order = next;
+    solved = false;
+    tip.classList.remove('win');
+    tip.textContent = '重新排一遍吧';
+    if (reduce) return layout(null, true);
+    order.forEach((it, i) => {
+      gsap.timeline({ delay: i * 0.04 })
+        .to(it.el, { x: (i % 2 ? 1 : -1) * 14, scale: 0.97, duration: 0.18, ease: 'power2.out' })
+        .to(it.el, { y: slotY(i), duration: 0.55, ease: 'power3.inOut' }, 0.08)
+        .to(it.el, { x: 0, scale: 1, duration: 0.5, ease: 'back.out(2)' }, 0.42);
+    });
+    refresh();
+  }
+
+  // ---------- 控件 ----------
+  const presets = document.getElementById('presets');
+  presets.addEventListener('click', e => {
+    const btn = e.target.closest('.opt');
+    if (!btn) return;
+    presets.querySelectorAll('.opt').forEach(b => b.classList.toggle('on', b === btn));
+    cfg.p = PRESETS[btn.dataset.p];
+  });
+  const dur = document.getElementById('dur');
+  dur.addEventListener('input', () => {
+    cfg.dur = +dur.value;
+    document.getElementById('dVal').textContent = cfg.dur.toFixed(2) + 's';
+  });
+  document.getElementById('shuffle').addEventListener('click', shuffle);
+  document.getElementById('demo').addEventListener('click', runDemo);
+
+  // 断点切换时行高会变，所有行和拖动边界都要按新行高重新摆
+  let lastH = 0;
+  addEventListener('resize', () => {
+    measure();
+    if (H === lastH) return;
+    lastH = H;
+    setBounds();
+    layout(dragging, true);
+  });
+
+  measure();
+  lastH = H;
+  setBounds();
+  layout(null, true);
+  gsap.set(items.map(it => it.el), { zIndex: 1 });
+
+  if (reduce) {
+    tip.textContent = '已开启「减少动态」：拖动照常排序，过渡改为直接到位';
+  } else {
+    // 入场从上到下落位，最后再自动演示一次，告诉用户「这些行是能拿起来的」
+    gsap.from(order.map(it => it.el), {
+      opacity: 0, y: (i) => slotY(i) + 24, duration: 0.7, ease: 'power3.out', stagger: 0.07, delay: 0.1
+    });
+    gsap.delayedCall(1.1, runDemo);
+  }
+</script>
+
+<!-- 图鉴浮条：返回图鉴 + 把这个 demo 的链接和提示词复制给 AI Agent -->
+<div id="galleryBar">
+  <a href="/" class="gb">← 图鉴</a>
+  <button class="gb" id="gbCopy">⧉ 复制给 AI</button>
+</div>
+<style>
+  #galleryBar {
+    position: fixed; left: 16px; bottom: 16px; z-index: 9999;
+    display: flex; gap: 8px; font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+  }
+  #galleryBar .gb {
+    font-size: 12px; line-height: 1; padding: 8px 12px; border-radius: 8px; cursor: pointer;
+    color: #8b949e; background: rgba(22,27,34,.92); border: 1px solid #30363d;
+    text-decoration: none; backdrop-filter: blur(8px); font-family: inherit;
+    transition: color .16s, border-color .16s;
+  }
+  #galleryBar .gb:hover { color: #58e6a8; border-color: #58e6a8; }
+  #galleryBar .gb.done { color: #58e6a8; border-color: rgba(88,230,168,.6); }
+  @media (max-width: 520px) { #galleryBar { left: 10px; bottom: 10px; } }
+</style>
+<script>
+  (function () {
+    var DEMO = 'drag-sort-list', TITLE = '拖拽排序列表';
+    var origin = location.protocol.startsWith('http') ? location.origin : 'https://gsap.leolee0812.site';
+    var text = '参考这个页面：' + origin + '/demos/' + DEMO + '.html\n' +
+      '它用 GSAP 3.13 实现了「' + TITLE + '」，源码里有完整可运行的实现和中文注释。\n' +
+      '请先读取这个链接，弄清它的实现方式（用到哪些插件、时间轴怎么排、缓动怎么选），\n' +
+      '然后把同样的效果复刻到我的项目里：沿用我现有的页面结构和配色，保持一致的节奏和手感。';
+    var btn = document.getElementById('gbCopy');
+    btn.addEventListener('click', function () {
+      var done = function () {
+        btn.textContent = '✓ 已复制，粘给你的 Agent';
+        btn.classList.add('done');
+        clearTimeout(btn._t);
+        btn._t = setTimeout(function () {
+          btn.textContent = '⧉ 复制给 AI';
+          btn.classList.remove('done');
+        }, 2200);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, done);
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+        done();
+      }
+    });
+  })();
+</script>
+</body>
+</html>
