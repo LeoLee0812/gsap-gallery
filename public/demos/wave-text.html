@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1117'/%3E%3Cpath d='M9 22c3-9 8-13 14-12' stroke='%2358e6a8' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='23' cy='10' r='3' fill='%233b82f6'/%3E%3C/svg%3E">
+<title>波浪文字</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+    min-height: 100vh; padding: 40px 20px 80px;
+    display: flex; flex-direction: column; align-items: center; gap: 22px;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .sub { font-size: 14px; opacity: .55; margin-top: -12px; text-align: center; line-height: 1.6; }
+
+  /* 舞台：上下留足空间给波峰波谷，字再怎么起伏也不会顶到边框 */
+  .stage {
+    position: relative; width: 100%; max-width: 960px;
+    min-height: 340px; padding: 40px 24px;
+    display: flex; align-items: center; justify-content: center;
+    background:
+      radial-gradient(ellipse at 50% 60%, rgba(59,130,246,.09), transparent 70%),
+      #161b22;
+    border: 1px solid #30363d; border-radius: 16px; overflow: hidden;
+    /* 只把横向手势留给波浪，竖向照常滚动页面 */
+    touch-action: pan-y; cursor: ew-resize;
+  }
+  /* 背景里那条淡淡的正弦参考线，让人一眼看出字是“骑”在一条曲线上 */
+  #guide { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  #guide path { fill: none; stroke: #58e6a8; stroke-width: 1.5; stroke-dasharray: 2 7; stroke-linecap: round; opacity: .32; }
+  #guide line { stroke: #30363d; stroke-width: 1; }
+
+  #text {
+    position: relative; text-align: center;
+    font-size: clamp(34px, 9.4vw, 104px); font-weight: 800; letter-spacing: .01em; line-height: 1.6;
+    user-select: none; -webkit-user-select: none;
+  }
+  /* 每个字单独做 transform，必须是 inline-block；transform-origin 放在字的底部中点，
+     旋转时像一块木板浮在水面上，而不是绕字心打转 */
+  #text .ch { display: inline-block; transform-origin: 50% 85%; will-change: transform; }
+  .tip {
+    position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+    font-size: 12px; color: #8b949e; letter-spacing: .5px; white-space: nowrap;
+    pointer-events: none; transition: opacity .6s;
+  }
+
+  .panel {
+    display: flex; gap: 22px 28px; flex-wrap: wrap; justify-content: center; align-items: flex-end;
+    background: #161b22; border: 1px solid #30363d; border-radius: 14px;
+    padding: 16px 22px; max-width: 960px; width: 100%;
+  }
+  .ctrl { display: flex; flex-direction: column; gap: 7px; }
+  .ctrl label { font-size: 12px; opacity: .6; }
+  .ctrl .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .opt {
+    background: #0d1117; color: #8b949e; border: 1px solid #30363d;
+    border-radius: 7px; padding: 6px 12px; font-size: 13px;
+    font-family: inherit; cursor: pointer; transition: all .16s;
+  }
+  .opt:hover { border-color: #58e6a8; color: #e6edf3; }
+  .opt.on { background: #58e6a8; color: #0d1117; border-color: #58e6a8; font-weight: 600; }
+  input[type=range] { width: 140px; accent-color: #58e6a8; }
+  .val { font-size: 12px; color: #58e6a8; font-family: ui-monospace, Menlo, monospace; }
+  .btns { display: flex; gap: 8px; }
+  .replay {
+    background: #58e6a8; color: #0d1117; border: 0; border-radius: 24px;
+    padding: 10px 24px; font-size: 14px; font-weight: 600; cursor: pointer;
+    font-family: inherit; transition: transform .16s, box-shadow .16s;
+  }
+  .replay:hover { box-shadow: 0 0 22px rgba(88,230,168,.4); }
+  .replay:active { transform: scale(.96); }
+  .ghost {
+    background: transparent; color: #e6edf3; border: 1px solid #30363d; border-radius: 24px;
+    padding: 10px 18px; font-size: 14px; cursor: pointer; font-family: inherit;
+    transition: border-color .16s, color .16s; min-width: 84px;
+  }
+  .ghost:hover { border-color: #58e6a8; color: #58e6a8; }
+
+  .note { font-size: 12px; color: #6e7681; text-align: center; max-width: 580px; line-height: 1.7; }
+  .note code { color: #58e6a8; font-family: ui-monospace, Menlo, monospace; }
+
+  @media (max-width: 520px) {
+    body { padding: 28px 14px 72px; gap: 18px; }
+    .stage { min-height: 280px; padding: 36px 12px; }
+    .panel { padding: 14px 16px; gap: 16px 20px; justify-content: flex-start; }
+    input[type=range] { width: 120px; }
+  }
+</style>
+</head>
+<body>
+  <h1>波浪文字</h1>
+  <p class="sub">每个字母按自己的横坐标取正弦值，整行字像水面一样连续起伏；在文字上左右划动，手指附近会掀起一个浪头</p>
+
+  <div class="stage" id="stage">
+    <svg id="guide" aria-hidden="true"><line id="axis"/><path id="curve"/></svg>
+    <div id="text"></div>
+    <div class="tip" id="tip">在文字上左右划过，掀起一个浪头</div>
+  </div>
+
+  <div class="panel">
+    <div class="ctrl">
+      <label>换一句</label>
+      <div class="row" id="words">
+        <button class="opt on" data-w="Making Waves">Making Waves</button>
+        <button class="opt" data-w="波浪文字">波浪文字</button>
+        <button class="opt" data-w="GSAP 3.13">GSAP 3.13</button>
+      </div>
+    </div>
+    <div class="ctrl">
+      <label>波长 <span class="val" id="lenVal">320px</span></label>
+      <input type="range" id="len" min="120" max="900" step="10" value="320">
+    </div>
+    <div class="ctrl">
+      <label>速度 <span class="val" id="spdVal">0.8 周/秒</span></label>
+      <input type="range" id="spd" min="0.1" max="2.5" step="0.1" value="0.8">
+    </div>
+    <div class="ctrl">
+      <label>振幅 <span class="val" id="ampVal">28px</span></label>
+      <input type="range" id="amp" min="0" max="60" step="1" value="28">
+    </div>
+    <div class="btns">
+      <button class="replay" id="replay">▶ 重新入场</button>
+      <button class="ghost" id="pause">❚❚ 暂停</button>
+    </div>
+  </div>
+
+  <p class="note">
+    核心只有一行：<code>y = A · sin(2π · x / λ − φ)</code>。x 是字母自己的横坐标，所以波长是真实像素，换字号、换屏宽都不会走样；
+    φ 由 <code>gsap.ticker</code> 按速度累加。振幅、暂停、浪头都交给补间去“缓”，参数怎么拖都不会突跳。
+  </p>
+
+<script src="../lib/gsap.min.js"></script>
+<script src="../lib/SplitText.min.js"></script>
+<script>
+  gsap.registerPlugin(SplitText);
+
+  const stage = document.getElementById('stage');
+  const textEl = document.getElementById('text');
+  const curve = document.getElementById('curve');
+  const axis = document.getElementById('axis');
+  const tip = document.getElementById('tip');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const TAU = Math.PI * 2;
+
+  // 滑块写 cfg（目标值），ticker 读 state（当前值）。
+  // 中间隔一层补间，拖滑块时波形是“滑”过去的，不会一帧之内突然变形。
+  const cfg = { amp: 28, len: 320, speed: 0.8 };
+  const state = { amp: 0, len: 320, speed: 0.8, timeScale: 1, phase: 0 };
+  // 浪头：x 跟手（quickTo 做跟随缓动），s 是强度 0~1（手进来涨、离开退）
+  const bump = { x: 0, s: 0 };
+  const bumpX = gsap.quickTo(bump, 'x', { duration: 0.45, ease: 'power3.out' });
+
+  let split = null;
+  let letters = [];   // { el, x, cy, rise, setY, setR }
+  let lines = [];     // 每一行字的中线 y，用来画参考线
+  let W = 0, H = 0;
+
+  // 颜色按高度走：波谷偏蓝、中间是正文白、波峰偏绿。两段插值拼成三色渐变
+  const lowMix = gsap.utils.interpolate('#3b82f6', '#e6edf3');
+  const highMix = gsap.utils.interpolate('#e6edf3', '#58e6a8');
+  const tint = v => v < 0 ? lowMix(v + 1) : highMix(v);
+
+  // ---------- 拆字 + 量位置 ----------
+  function build(word) {
+    if (split) split.revert();
+    textEl.textContent = word;
+    split = new SplitText(textEl, { type: 'words,chars', charsClass: 'ch' });
+    letters = split.chars.map(el => ({
+      el, x: 0, cy: 0, rise: 0,
+      // 每帧要写十几个字的 transform，quickSetter 省掉补间解析的开销
+      setY: gsap.quickSetter(el, 'y', 'px'),
+      setR: gsap.quickSetter(el, 'rotation', 'deg')
+    }));
+    measure();
+  }
+
+  // 用 offsetLeft/Top 一路累加到舞台，而不是 getBoundingClientRect：
+  // 前者不受 transform 影响，字正在半空中时量出来的仍是它“静止时”的位置
+  function offsetIn(el) {
+    let x = 0, y = 0;
+    while (el && el !== stage) { x += el.offsetLeft; y += el.offsetTop; el = el.offsetParent; }
+    return { x, y };
+  }
+  function measure() {
+    W = stage.clientWidth; H = stage.clientHeight;
+    curve.parentNode.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    const ys = new Set();
+    letters.forEach(l => {
+      const o = offsetIn(l.el);
+      // 横坐标以舞台中心为 0：调波长时波形围绕中间伸缩，两边对称，不会整行往一侧“跑”
+      l.x = o.x + l.el.offsetWidth / 2 - W / 2;
+      l.cy = Math.round(o.y + l.el.offsetHeight * 0.55);
+      ys.add(l.cy);
+    });
+    lines = [...ys];
+    const mid = lines.reduce((a, b) => a + b, 0) / (lines.length || 1);
+    axis.setAttribute('x1', 0); axis.setAttribute('x2', W);
+    axis.setAttribute('y1', mid); axis.setAttribute('y2', mid);
+  }
+
+  // ---------- 波形公式 ----------
+  // 返回某个横坐标上的 位移 和 斜率。斜率拿来算旋转角，字会顺着波面倾斜，
+  // 这是“在波浪上漂”和“上下抖动”的分水岭。
+  function wave(x) {
+    const k = TAU / state.len;
+    // 浪头用高斯包络：手指正下方振幅最大，往两边平滑衰减到普通波高
+    const d = (x - bump.x) / 150;
+    const a = state.amp + bump.s * 34 * Math.exp(-d * d);
+    const th = k * x - state.phase;
+    return { y: -a * Math.sin(th), slope: -a * k * Math.cos(th), v: Math.sin(th), a };
+  }
+
+  function render() {
+    const ref = Math.max(state.amp + bump.s * 34, 1);
+    letters.forEach(l => {
+      const w = wave(l.x);
+      l.setY(w.y + l.rise);
+      // 真实斜率角太夸张，打个对折，倾斜感有了又不至于东倒西歪
+      l.setR(Math.atan(w.slope) * 57.3 * 0.5);
+      // 用“相对高度”上色：振幅很小时颜色也跟着收敛，不会平静的水面还在闪色
+      l.el.style.color = tint(gsap.utils.clamp(-1, 1, -w.y / ref) * Math.min(1, w.a / 20));
+    });
+    // 参考线：每行一条，每 8px 取一个点，足够平滑又不费事
+    let d = '';
+    lines.forEach(cy => {
+      for (let px = 0; px <= W + 8; px += 8) {
+        const w = wave(px - W / 2);
+        d += (px ? 'L' : 'M') + px + ' ' + (cy + w.y).toFixed(1);
+      }
+    });
+    curve.setAttribute('d', d);
+  }
+
+  // 相位按时间累加，而不是 time * speed：
+  // 后者一改速度整条波会瞬间跳到另一个相位，累加则只改变“往后走多快”
+  function tick(time, dt) {
+    state.phase += (dt / 1000) * state.speed * TAU * state.timeScale;
+    render();
+  }
+
+  // ---------- 入场 / 退场 ----------
+  let introTl;
+  function intro() {
+    introTl && introTl.kill();
+    gsap.killTweensOf(state, 'amp');
+    if (reduce) {
+      // 降级：不涨潮、不落字，直接给一个定格的波形，淡入即可
+      state.amp = cfg.amp; letters.forEach(l => l.rise = 0); render();
+      gsap.fromTo(split.chars, { opacity: 0 }, { opacity: 1, duration: 0.4 });
+      return;
+    }
+    state.amp = 0;
+    introTl = gsap.timeline()
+      // 先让字从上方掉进“平静的水面”：back.out 的一点过冲就像落水后微微下沉再浮起
+      .fromTo(letters, { rise: -150 }, {
+        rise: 0, duration: 0.9, ease: 'back.out(1.7)',
+        stagger: { each: 0.045, from: 'center' }
+      })
+      .fromTo(split.chars, { opacity: 0 }, {
+        opacity: 1, duration: 0.35, ease: 'power1.out',
+        stagger: { each: 0.045, from: 'center' }
+      }, 0)
+      // 水面稳住之后再慢慢起浪。sine.inOut 让涨潮的开头和结尾都很柔，没有“啪”一下的启动感
+      .to(state, { amp: cfg.amp, duration: 1.8, ease: 'sine.inOut' }, '-=0.35');
+  }
+
+  function outro() {
+    if (reduce || !letters.length) return Promise.resolve();
+    introTl && introTl.kill();
+    return gsap.timeline()
+      .to(letters, { rise: 90, duration: 0.45, ease: 'power2.in', stagger: { each: 0.025, from: 'edges' } })
+      .to(split.chars, { opacity: 0, duration: 0.3, ease: 'power1.in', stagger: { each: 0.025, from: 'edges' } }, 0.12)
+      .then();
+  }
+
+  // ---------- 交互：浪头 ----------
+  let tipShown = true;
+  function localX(e) { return e.clientX - stage.getBoundingClientRect().left - W / 2; }
+  function swell(e) {
+    if (reduce) return;
+    bumpX(localX(e));
+    gsap.to(bump, { s: 1, duration: 0.5, ease: 'power2.out', overwrite: 'auto' });
+    if (tipShown) { tip.style.opacity = 0; tipShown = false; }
+  }
+  // 手离开后浪头慢慢退，比涨的时候更慢，余波才显得自然
+  function calm() { gsap.to(bump, { s: 0, duration: 1.2, ease: 'sine.out', overwrite: 'auto' }); }
+  stage.addEventListener('pointerdown', e => { bump.x = localX(e); swell(e); });
+  stage.addEventListener('pointermove', swell);
+  stage.addEventListener('pointerleave', calm);
+  stage.addEventListener('pointercancel', calm);
+  stage.addEventListener('pointerup', e => { if (e.pointerType !== 'mouse') calm(); });
+
+  // ---------- 面板 ----------
+  function bindRange(id, key, fmt) {
+    const input = document.getElementById(id), out = document.getElementById(id + 'Val');
+    input.addEventListener('input', () => {
+      cfg[key] = +input.value;
+      out.textContent = fmt(cfg[key]);
+      if (reduce) { state[key] = cfg[key]; render(); return; }
+      // 入场途中拖振幅：直接接管，免得涨潮补间稍后又把它拽回旧值
+      if (key === 'amp' && introTl) introTl.getChildren().forEach(t => t.targets()[0] === state && t.kill());
+      gsap.to(state, { [key]: cfg[key], duration: 0.6, ease: 'power2.out', overwrite: 'auto' });
+    });
+  }
+  bindRange('len', 'len', v => v + 'px');
+  bindRange('spd', 'speed', v => v.toFixed(1) + ' 周/秒');
+  bindRange('amp', 'amp', v => v + 'px');
+
+  let busy = false;
+  document.querySelectorAll('#words .opt').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (busy || btn.classList.contains('on')) return;
+      busy = true;
+      document.querySelectorAll('#words .opt').forEach(b => b.classList.toggle('on', b === btn));
+      await outro();
+      build(btn.dataset.w);
+      intro();
+      busy = false;
+    });
+  });
+
+  document.getElementById('replay').addEventListener('click', intro);
+
+  // 暂停不是一刀切：把时间流速缓到 0，波浪像被慢慢冻住；继续时再缓缓加速
+  const pauseBtn = document.getElementById('pause');
+  let paused = false;
+  pauseBtn.addEventListener('click', () => {
+    paused = !paused;
+    pauseBtn.textContent = paused ? '▶ 继续' : '❚❚ 暂停';
+    gsap.to(state, { timeScale: paused ? 0 : 1, duration: paused ? 0.9 : 0.7, ease: paused ? 'power2.out' : 'power2.in', overwrite: 'auto' });
+  });
+  if (reduce) pauseBtn.style.display = 'none';
+
+  window.addEventListener('resize', () => { measure(); render(); });
+
+  // 等字体就绪再拆字，否则量到的是后备字体的宽度，波形会和字错开
+  document.fonts.ready.then(() => {
+    build('Making Waves');
+    if (reduce) {
+      // 静态降级：定一个好看的相位，不跑 ticker
+      state.phase = 0.6;
+      tip.textContent = '已开启减少动态效果：波形定格，可用滑块调整';
+    } else {
+      gsap.ticker.add(tick);
+    }
+    intro();
+  });
+</script>
+
+<!-- 图鉴浮条：返回图鉴 + 把这个 demo 的链接和提示词复制给 AI Agent -->
+<div id="galleryBar">
+  <a href="/" class="gb">← 图鉴</a>
+  <button class="gb" id="gbCopy">⧉ 复制给 AI</button>
+</div>
+<style>
+  #galleryBar {
+    position: fixed; left: 16px; bottom: 16px; z-index: 9999;
+    display: flex; gap: 8px; font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+  }
+  #galleryBar .gb {
+    font-size: 12px; line-height: 1; padding: 8px 12px; border-radius: 8px; cursor: pointer;
+    color: #8b949e; background: rgba(22,27,34,.92); border: 1px solid #30363d;
+    text-decoration: none; backdrop-filter: blur(8px); font-family: inherit;
+    transition: color .16s, border-color .16s;
+  }
+  #galleryBar .gb:hover { color: #58e6a8; border-color: #58e6a8; }
+  #galleryBar .gb.done { color: #58e6a8; border-color: rgba(88,230,168,.6); }
+  @media (max-width: 520px) { #galleryBar { left: 10px; bottom: 10px; } }
+</style>
+<script>
+  (function () {
+    var DEMO = 'wave-text', TITLE = '波浪文字';
+    var origin = location.protocol.startsWith('http') ? location.origin : 'https://gsap.leolee0812.site';
+    var text = '参考这个页面：' + origin + '/demos/' + DEMO + '.html\n' +
+      '它用 GSAP 3.13 实现了「' + TITLE + '」，源码里有完整可运行的实现和中文注释。\n' +
+      '请先读取这个链接，弄清它的实现方式（用到哪些插件、时间轴怎么排、缓动怎么选），\n' +
+      '然后把同样的效果复刻到我的项目里：沿用我现有的页面结构和配色，保持一致的节奏和手感。';
+    var btn = document.getElementById('gbCopy');
+    btn.addEventListener('click', function () {
+      var done = function () {
+        btn.textContent = '✓ 已复制，粘给你的 Agent';
+        btn.classList.add('done');
+        clearTimeout(btn._t);
+        btn._t = setTimeout(function () {
+          btn.textContent = '⧉ 复制给 AI';
+          btn.classList.remove('done');
+        }, 2200);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, done);
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+        done();
+      }
+    });
+  })();
+</script>
+</body>
+</html>
