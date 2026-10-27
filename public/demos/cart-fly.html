@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1117'/%3E%3Cpath d='M9 22c3-9 8-13 14-12' stroke='%2358e6a8' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='23' cy='10' r='3' fill='%233b82f6'/%3E%3C/svg%3E">
+<title>购物车飞入</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+    min-height: 100vh; padding: 40px 20px 80px;
+    display: flex; flex-direction: column; align-items: center; gap: 22px;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .sub { font-size: 14px; opacity: .55; margin-top: -12px; text-align: center; line-height: 1.6; }
+
+  /* 舞台就是一个迷你商店：顶栏放购物车，下面一排商品卡 */
+  .stage {
+    position: relative; width: 100%; max-width: 960px;
+    background:
+      radial-gradient(ellipse at 85% 0%, rgba(88,230,168,.06), transparent 50%),
+      radial-gradient(circle, rgba(255,255,255,.03) 1px, transparent 1.5px) 0 0 / 22px 22px,
+      #161b22;
+    border: 1px solid #30363d; border-radius: 16px; padding: 0 22px 26px;
+    user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+  }
+  .bar {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    height: 72px; border-bottom: 1px solid #262c35; margin-bottom: 24px;
+  }
+  .logo { font-weight: 700; font-size: 16px; letter-spacing: .5px; display: flex; align-items: center; gap: 8px; }
+  .logo i { width: 10px; height: 10px; border-radius: 3px; background: #58e6a8; display: inline-block; transform: rotate(45deg); }
+  .right { display: flex; align-items: center; gap: 14px; }
+  .total { font-size: 13px; color: #8b949e; white-space: nowrap; }
+  .total b { color: #e6edf3; font-variant-numeric: tabular-nums; font-weight: 600; }
+
+  /* 购物车按钮只当热区和定位基准；真正抖动的是里面的 .cart-ico，
+     这样旋转、挤压都绕着车底转，徽标也不会跟着歪 */
+  .cart {
+    position: relative; width: 48px; height: 48px; border-radius: 14px;
+    background: #1c232d; border: 1px solid #30363d; color: #e6edf3; cursor: pointer;
+    display: grid; place-items: center; -webkit-tap-highlight-color: transparent;
+  }
+  .cart:focus { outline: none; }
+  .cart:focus-visible { box-shadow: 0 0 0 3px #0d1117, 0 0 0 5px #3b82f6; }
+  .cart-ico { width: 26px; height: 26px; transform-origin: 50% 85%; will-change: transform; }
+  .cart-ico path, .cart-ico circle { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .cart-ico .wheel { fill: currentColor; stroke: none; }
+  .pulse { position: absolute; inset: -1px; border-radius: 14px; border: 2px solid #58e6a8; opacity: 0; pointer-events: none; }
+  .badge {
+    position: absolute; top: -8px; right: -8px; min-width: 22px; height: 22px; padding: 0 6px;
+    border-radius: 11px; background: #58e6a8; color: #0d1117; font-size: 12px; font-weight: 700;
+    display: flex; justify-content: center; align-items: center; overflow: hidden;
+    box-shadow: 0 0 0 3px #161b22; transform: scale(0); font-variant-numeric: tabular-nums;
+  }
+  .badge span { display: block; line-height: 22px; }
+  .badge span + span { position: absolute; }
+  .plus { position: absolute; left: 50%; top: -6px; font-size: 13px; font-weight: 700; color: #58e6a8; pointer-events: none; opacity: 0; }
+
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .card {
+    background: #1b212a; border: 1px solid #2a313b; border-radius: 14px; padding: 12px;
+    display: flex; flex-direction: column; gap: 10px; min-width: 0;
+  }
+  .thumb {
+    aspect-ratio: 1 / 1; border-radius: 10px; display: grid; place-items: center; overflow: hidden;
+  }
+  .thumb svg { width: 64%; height: 64%; overflow: visible; }
+  .name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .price { font-size: 13px; color: #8b949e; font-variant-numeric: tabular-nums; }
+  .add {
+    position: relative; height: 36px; border-radius: 10px; border: 1px solid #30363d;
+    background: #222a35; color: #e6edf3; font: inherit; font-size: 13px; font-weight: 600;
+    cursor: pointer; overflow: hidden; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    transition: border-color .2s, background .2s;
+  }
+  .add:hover { border-color: #58e6a8; }
+  .add:focus { outline: none; }
+  .add:focus-visible { box-shadow: 0 0 0 2px #0d1117, 0 0 0 4px #3b82f6; }
+  .add.ok { background: rgba(88,230,168,.14); border-color: rgba(88,230,168,.55); color: #58e6a8; }
+  /* 两种文案叠在同一个格子里，切换时上下对滚，按钮宽度不会跳 */
+  .add .lbl { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 6px; }
+  /* 「已加入」的初始位置交给 gsap.set 设成 yPercent，不写 CSS transform：
+     否则 GSAP 会把它读成像素位移叠在 yPercent 上，文案永远差一格 */
+  .add .lbl.done { visibility: hidden; }
+
+  .tip { text-align: center; font-size: 12px; color: #6e7681; margin-top: 18px; letter-spacing: .5px; }
+
+  /* 飞行层铺满视口但不吃事件，也不参与布局：飞出舞台的部分不会撑出滚动条 */
+  .fly-layer { position: fixed; inset: 0; pointer-events: none; z-index: 50; overflow: hidden; }
+  .flyer {
+    position: absolute; left: 0; top: 0; width: 64px; height: 64px; border-radius: 16px;
+    display: grid; place-items: center; will-change: transform;
+    box-shadow: 0 12px 28px rgba(0,0,0,.45);
+  }
+  .flyer svg { width: 66%; height: 66%; overflow: visible; }
+  .ghost { position: absolute; left: 0; top: 0; width: 14px; height: 14px; border-radius: 50%; will-change: transform; }
+
+  .panel {
+    display: flex; gap: 22px 28px; flex-wrap: wrap; justify-content: center; align-items: flex-end;
+    background: #161b22; border: 1px solid #30363d; border-radius: 14px;
+    padding: 16px 22px; max-width: 960px; width: 100%;
+  }
+  .ctrl { display: flex; flex-direction: column; gap: 7px; }
+  .ctrl label { font-size: 12px; opacity: .6; }
+  input[type=range] { width: 160px; accent-color: #58e6a8; }
+  .val { font-size: 12px; color: #58e6a8; font-family: ui-monospace, Menlo, monospace; }
+  .btns { display: flex; gap: 10px; }
+  .replay {
+    background: #58e6a8; color: #0d1117; border: 0; border-radius: 24px;
+    padding: 10px 26px; font-size: 14px; font-weight: 600; cursor: pointer;
+    font-family: inherit; transition: transform .16s, box-shadow .16s;
+  }
+  .replay:hover { box-shadow: 0 0 22px rgba(88,230,168,.4); }
+  .replay:active { transform: scale(.96); }
+  .ghost-btn {
+    background: none; color: #8b949e; border: 1px solid #30363d; border-radius: 24px;
+    padding: 9px 20px; font-size: 14px; cursor: pointer; font-family: inherit; transition: color .16s, border-color .16s;
+  }
+  .ghost-btn:hover { color: #e6edf3; border-color: #8b949e; }
+
+  .note { font-size: 12px; color: #6e7681; text-align: center; max-width: 600px; line-height: 1.7; }
+  .note code { color: #58e6a8; font-family: ui-monospace, Menlo, monospace; }
+
+  @media (max-width: 720px) {
+    .grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  }
+  @media (max-width: 520px) {
+    body { padding: 28px 14px 72px; gap: 18px; }
+    .stage { padding: 0 14px 18px; }
+    .bar { height: 64px; margin-bottom: 16px; }
+    .card { padding: 10px; gap: 8px; }
+    .name { font-size: 13px; }
+    .add { height: 34px; font-size: 12px; }
+    .flyer { width: 52px; height: 52px; border-radius: 13px; }
+    .panel { padding: 14px 16px; gap: 16px 20px; justify-content: flex-start; }
+    input[type=range] { width: 140px; }
+  }
+</style>
+</head>
+<body>
+  <h1>购物车飞入</h1>
+  <p class="sub">点「加入购物车」：商品图先轻轻弹起，沿一道弧线缩小着飞进右上角的购物车，车身一抖，徽标数字跳一下</p>
+
+  <div class="stage" id="stage">
+    <div class="bar">
+      <div class="logo"><i></i>小铺</div>
+      <div class="right">
+        <span class="total">合计 <b id="total">¥0</b></span>
+        <button class="cart" id="cart" aria-label="购物车，0 件">
+          <span class="pulse" id="pulse"></span>
+          <svg class="cart-ico" id="cartIco" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M2.5 3.5h2.6l2.3 11.2a1.6 1.6 0 0 0 1.6 1.3h8.4a1.6 1.6 0 0 0 1.6-1.2l1.6-6.8H6.2"/>
+            <circle class="wheel" cx="9.6" cy="20" r="1.5"/>
+            <circle class="wheel" cx="17.4" cy="20" r="1.5"/>
+          </svg>
+          <span class="badge" id="badge"><span>0</span></span>
+          <span class="plus" id="plus">+1</span>
+        </button>
+      </div>
+    </div>
+    <div class="grid" id="grid"></div>
+    <p class="tip" id="tip">连点几下试试：每件商品各飞各的，购物车逐个接住</p>
+  </div>
+
+  <div class="panel">
+    <div class="ctrl">
+      <label>弧线高度 <span class="val" id="aVal">120px</span></label>
+      <input type="range" id="arc" min="0" max="260" step="10" value="120">
+    </div>
+    <div class="ctrl">
+      <label>飞行时长 <span class="val" id="dVal">0.80s</span></label>
+      <input type="range" id="dur" min="0.4" max="1.6" step="0.05" value="0.8">
+    </div>
+    <div class="btns">
+      <button class="replay" id="replay">▶ 演示一遍</button>
+      <button class="ghost-btn" id="clear">清空</button>
+    </div>
+  </div>
+
+  <p class="note">
+    弧线用 <code>MotionPathPlugin</code> 的三次贝塞尔：第一个控制点抬在起点正上方，商品像被「拎起来」；第二个控制点压在购物车上方，最后一段几乎垂直落进车里。位移走 <code>power1.in</code> 越飞越快，缩放走 <code>power2.in</code>，落车前一刻才缩到最小。
+  </p>
+
+  <div class="fly-layer" id="layer"></div>
+
+<script src="../lib/gsap.min.js"></script>
+<script src="../lib/MotionPathPlugin.min.js"></script>
+<script>
+  gsap.registerPlugin(MotionPathPlugin);
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // 商品图全部用内联 SVG 现画，背景是各自主色的渐变；飞出去的分身直接复用同一份 SVG
+  const PRODUCTS = [
+    { name: '粗陶马克杯', price: 68, color: '#f0883e', bg: 'linear-gradient(145deg,#3a2a1f,#2a1f18)', svg:
+      '<svg viewBox="0 0 64 64"><ellipse cx="28" cy="54" rx="18" ry="3" fill="rgba(0,0,0,.3)"/>' +
+      '<path d="M44 24h4a8 8 0 0 1 0 16h-4" fill="none" stroke="#f0883e" stroke-width="5"/>' +
+      '<path d="M12 18h32v26a8 8 0 0 1-8 8H20a8 8 0 0 1-8-8z" fill="#f0883e"/>' +
+      '<path d="M12 18h32v7H12z" fill="#ffb27a"/><path d="M22 8c-2 3 2 5 0 8M31 7c-2 3 2 5 0 8" stroke="#ffb27a" stroke-width="2.4" fill="none" stroke-linecap="round" opacity=".7"/></svg>' },
+    { name: '降噪耳机', price: 499, color: '#3b82f6', bg: 'linear-gradient(145deg,#1d2a44,#172033)', svg:
+      '<svg viewBox="0 0 64 64"><path d="M14 36V30a18 18 0 0 1 36 0v6" fill="none" stroke="#8fb6ff" stroke-width="4.5" stroke-linecap="round"/>' +
+      '<rect x="8" y="32" width="13" height="20" rx="6" fill="#3b82f6"/><rect x="43" y="32" width="13" height="20" rx="6" fill="#3b82f6"/>' +
+      '<rect x="12" y="36" width="5" height="12" rx="2.5" fill="#8fb6ff" opacity=".6"/><rect x="47" y="36" width="5" height="12" rx="2.5" fill="#8fb6ff" opacity=".6"/></svg>' },
+    { name: '多肉盆栽', price: 39, color: '#58e6a8', bg: 'linear-gradient(145deg,#1b3a2e,#162a22)', svg:
+      '<svg viewBox="0 0 64 64"><path d="M32 36c-10-2-16-10-15-20 8 2 13 9 15 20z" fill="#3fbf86"/>' +
+      '<path d="M32 36c10-2 16-10 15-20-8 2-13 9-15 20z" fill="#58e6a8"/><path d="M32 37c-3-9-1-19 0-27 2 8 3 18 0 27z" fill="#9af2c8"/>' +
+      '<path d="M18 36h28l-3 16a4 4 0 0 1-4 3H25a4 4 0 0 1-4-3z" fill="#c58cff"/><path d="M16 34h32v5H16z" rx="2" fill="#dcb6ff"/></svg>' },
+    { name: '帆布双肩包', price: 229, color: '#ff7aa8', bg: 'linear-gradient(145deg,#3d2232,#2b1a25)', svg:
+      '<svg viewBox="0 0 64 64"><path d="M24 14a8 8 0 0 1 16 0" fill="none" stroke="#ffb3cc" stroke-width="3.5"/>' +
+      '<rect x="14" y="14" width="36" height="42" rx="10" fill="#ff7aa8"/><rect x="20" y="34" width="24" height="15" rx="4" fill="#e2557f"/>' +
+      '<path d="M20 40h24" stroke="#ffb3cc" stroke-width="2"/><circle cx="32" cy="24" r="3" fill="#ffd166"/></svg>' }
+  ];
+
+  const grid = document.getElementById('grid');
+  const layer = document.getElementById('layer');
+  const cartBtn = document.getElementById('cart');
+  const cartIco = document.getElementById('cartIco');
+  const badge = document.getElementById('badge');
+  const pulse = document.getElementById('pulse');
+  const plus = document.getElementById('plus');
+  const totalEl = document.getElementById('total');
+  const cfg = { arc: 120, dur: 0.8 };
+
+  grid.innerHTML = PRODUCTS.map((p, i) => `
+    <div class="card">
+      <div class="thumb" style="background:${p.bg}">${p.svg}</div>
+      <div class="name">${p.name}</div>
+      <div class="price">¥${p.price}</div>
+      <button class="add" data-i="${i}">
+        <span class="lbl add-lbl"><b>+</b> 加入购物车</span>
+        <span class="lbl done">✓ 已加入</span>
+      </button>
+    </div>`).join('');
+  gsap.set('.add .done', { yPercent: 100, visibility: 'visible' });
+
+  // 购物车里的状态：count 是「已经落进车里」的数量，不是点了多少下。
+  // 商品还在半空时徽标不该先变，否则数字和画面对不上
+  let count = 0;
+  const money = { v: 0 };
+  let sum = 0;
+
+  // ---------- 飞行 ----------
+  function fly(i) {
+    const p = PRODUCTS[i];
+    const card = grid.children[i];
+    const thumb = card.querySelector('.thumb');
+    const t = thumb.getBoundingClientRect();
+    const c = cartBtn.getBoundingClientRect();
+    const S = { x: t.left + t.width / 2, y: t.top + t.height / 2 };
+    const E = { x: c.left + c.width / 2, y: c.top + c.height / 2 };
+
+    if (reduce) { land(p); return; }
+
+    // 控制点：c1 在起点正上方，先「拎起来」；c2 在购物车正上方，最后一段竖直落下。
+    // 两个都夹在视口顶部以下，弧线拉满时也不会飞出屏幕看不见
+    const top = Math.min(S.y, E.y) - cfg.arc;
+    const clampY = y => Math.max(24, y);
+    const dx = E.x - S.x;
+    const path = [
+      S,
+      { x: S.x + dx * 0.12, y: clampY(top) },
+      { x: E.x - dx * 0.02, y: clampY(E.y - cfg.arc * 0.85 - 30) },
+      E
+    ];
+
+    const f = document.createElement('div');
+    f.className = 'flyer';
+    f.style.background = p.bg;
+    f.innerHTML = p.svg;
+    layer.appendChild(f);
+
+    // 分身的尺寸按缩略图实际大小算一个起始缩放，起飞那一帧和原图完全重合，看起来像原图本身被拎了起来
+    const startScale = t.width / f.offsetWidth;
+    const spin = dx > 0 ? 18 : -18;
+    gsap.set(f, { x: S.x, y: S.y, xPercent: -50, yPercent: -50, scale: startScale, borderRadius: 10 });
+
+    // 拖尾：两颗同色小点沿同一条路径晚一点出发，速度快的时候才看得出一道流光
+    const ghosts = [0.05, 0.1].map((lag, k) => {
+      const g = document.createElement('div');
+      g.className = 'ghost';
+      g.style.background = p.color;
+      layer.insertBefore(g, f);
+      gsap.set(g, { x: S.x, y: S.y, xPercent: -50, yPercent: -50, scale: 0, opacity: 0.55 - k * 0.2 });
+      return { g, lag };
+    });
+
+    const D = cfg.dur;
+    const tl = gsap.timeline({ onComplete: () => { f.remove(); ghosts.forEach(o => o.g.remove()); } });
+    tl
+      // 第一拍：原地弹一下变成小卡片，告诉用户「这件被拿起来了」
+      .to(f, { scale: 0.92, borderRadius: 16, duration: 0.22, ease: 'back.out(2.4)' })
+      .to(thumb, { scale: 0.94, duration: 0.1, ease: 'power2.out' }, 0)
+      .to(thumb, { scale: 1, duration: 0.5, ease: 'elastic.out(1, 0.5)' }, 0.1)
+      // 第二拍：沿弧线飞。power1.in 让它越飞越快，进车那一下有冲劲
+      .to(f, { motionPath: { path, type: 'cubic' }, duration: D, ease: 'power1.in' }, 0.16)
+      .to(f, { scale: 0.22, rotation: spin, duration: D, ease: 'power2.in' }, 0.16)
+      .to(f, { opacity: 0, duration: 0.08, ease: 'none' }, 0.16 + D - 0.06)
+      .call(() => land(p), null, 0.16 + D - 0.02);
+
+    ghosts.forEach(({ g, lag }) => {
+      tl.to(g, { motionPath: { path, type: 'cubic' }, duration: D, ease: 'power1.in' }, 0.16 + lag)
+        .to(g, { scale: 1, duration: D * 0.4, ease: 'power2.out' }, 0.16 + lag)
+        .to(g, { scale: 0, duration: D * 0.5, ease: 'power2.in' }, 0.16 + lag + D * 0.5);
+    });
+  }
+
+  // ---------- 落车：车身一抖 + 徽标跳数 + 合计滚动 ----------
+  let shakeTl;
+  function land(p) {
+    count++;
+    sum += p.price;
+    cartBtn.setAttribute('aria-label', `购物车，${count} 件`);
+    rollBadge();
+    gsap.to(money, { v: sum, duration: reduce ? 0 : 0.6, ease: 'power2.out', overwrite: true,
+      onUpdate: () => totalEl.textContent = '¥' + Math.round(money.v).toLocaleString('en-US') });
+
+    if (reduce) return;
+    // 连续落车时上一次的抖动直接打断重来，否则旋转会叠加越抖越歪
+    if (shakeTl) shakeTl.kill();
+    shakeTl = gsap.timeline()
+      // 先被砸得往下一沉，再左右摆几下收住；摆幅逐次减半，像真的有重量
+      .to(cartIco, { scaleY: 0.8, scaleX: 1.14, y: 2, duration: 0.09, ease: 'power2.out' })
+      .to(cartIco, { scaleY: 1, scaleX: 1, y: 0, duration: 0.55, ease: 'elastic.out(1.2, 0.35)' })
+      .to(cartIco, { keyframes: { rotation: [0, -16, 12, -7, 3, 0], ease: 'none' }, duration: 0.6, ease: 'power1.out' }, 0.04)
+      .fromTo(pulse, { scale: 1, opacity: 0.8 }, { scale: 1.45, opacity: 0, duration: 0.55, ease: 'power2.out' }, 0);
+
+    gsap.fromTo(plus, { xPercent: -50, y: 0, opacity: 1, scale: 0.6 },
+      { y: -26, scale: 1, opacity: 0, duration: 0.8, ease: 'power2.out', overwrite: true });
+  }
+
+  // 徽标：第一次从无到有弹出来，之后每次只把数字往上滚一格，再整体跳一下
+  function rollBadge() {
+    const spans = badge.children;
+    while (spans.length > 1) { gsap.killTweensOf(spans[0]); spans[0].remove(); }
+    const old = spans[0];
+    const neu = document.createElement('span');
+    neu.textContent = count;
+    badge.appendChild(neu);
+    if (reduce) { old.remove(); gsap.set(badge, { scale: count ? 1 : 0 }); return; }
+
+    gsap.fromTo(old, { yPercent: 0 }, { yPercent: -100, opacity: 0, duration: 0.3, ease: 'power2.in', onComplete: () => old.remove() });
+    gsap.fromTo(neu, { yPercent: 100, opacity: 0 }, { yPercent: 0, opacity: 1, duration: 0.4, ease: 'back.out(2)', delay: 0.06 });
+    if (count === 1) {
+      gsap.fromTo(badge, { scale: 0 }, { scale: 1, duration: 0.7, ease: 'elastic.out(1, 0.45)', overwrite: true });
+    } else {
+      gsap.fromTo(badge, { scale: 1.35 }, { scale: 1, duration: 0.5, ease: 'elastic.out(1, 0.4)', overwrite: true });
+    }
+  }
+
+  function clearCart() {
+    if (!count) return;
+    count = 0; sum = 0;
+    cartBtn.setAttribute('aria-label', '购物车，0 件');
+    gsap.to(badge, { scale: 0, duration: reduce ? 0 : 0.25, ease: 'power2.in', overwrite: true,
+      onComplete: () => { badge.innerHTML = '<span>0</span>'; } });
+    gsap.to(money, { v: 0, duration: reduce ? 0 : 0.5, ease: 'power2.inOut', overwrite: true,
+      onUpdate: () => totalEl.textContent = '¥' + Math.round(money.v).toLocaleString('en-US') });
+  }
+
+  // ---------- 按钮反馈：文案对滚成「✓ 已加入」，停一会儿再滚回来 ----------
+  function confirmBtn(btn) {
+    const [a, b] = btn.querySelectorAll('.lbl');
+    btn.classList.add('ok');
+    gsap.killTweensOf([a, b]);
+    if (reduce) {
+      gsap.set(a, { yPercent: -100 }); gsap.set(b, { yPercent: 0 });
+    } else {
+      gsap.to(a, { yPercent: -100, duration: 0.3, ease: 'power3.inOut' });
+      gsap.fromTo(b, { yPercent: 100 }, { yPercent: 0, duration: 0.3, ease: 'power3.inOut' });
+    }
+    clearTimeout(btn._t);
+    btn._t = setTimeout(() => {
+      btn.classList.remove('ok');
+      gsap.to(a, { yPercent: 0, duration: reduce ? 0 : 0.3, ease: 'power3.inOut' });
+      gsap.to(b, { yPercent: 100, duration: reduce ? 0 : 0.3, ease: 'power3.inOut' });
+    }, 1300);
+  }
+
+  grid.addEventListener('click', e => {
+    const btn = e.target.closest('.add');
+    if (!btn) return;
+    confirmBtn(btn);
+    fly(+btn.dataset.i);
+  });
+  // 按下就先压一下，手感从 pointerdown 开始
+  grid.addEventListener('pointerdown', e => {
+    const btn = e.target.closest('.add');
+    if (btn && !reduce) gsap.to(btn, { scale: 0.95, duration: 0.1, ease: 'power2.out', overwrite: true });
+  });
+  ['pointerup', 'pointercancel', 'pointerout'].forEach(type => grid.addEventListener(type, e => {
+    const btn = e.target.closest('.add');
+    if (btn && !reduce) gsap.to(btn, { scale: 1, duration: 0.5, ease: 'elastic.out(1, 0.5)', overwrite: true });
+  }));
+
+  // 点购物车本身：轻轻抖一下，提示它是「接东西的地方」
+  cartBtn.addEventListener('click', () => {
+    if (reduce) return;
+    gsap.fromTo(cartIco, { rotation: 0 }, { keyframes: { rotation: [0, -10, 8, -4, 0] }, duration: 0.45, ease: 'power1.out', overwrite: 'auto' });
+  });
+
+  // ---------- 演示：清空，再把三件商品一件接一件丢进去 ----------
+  let demo;
+  function runDemo() {
+    if (demo) demo.kill();
+    clearCart();
+    const order = [0, 2, 1, 3];
+    demo = gsap.timeline({ delay: 0.35 });
+    order.forEach((i, k) => {
+      demo.call(() => {
+        const btn = grid.children[i].querySelector('.add');
+        confirmBtn(btn);
+        fly(i);
+      }, null, k * 0.32);
+    });
+  }
+
+  // ---------- 控件 ----------
+  const arc = document.getElementById('arc'), dur = document.getElementById('dur');
+  arc.addEventListener('input', () => {
+    cfg.arc = +arc.value;
+    document.getElementById('aVal').textContent = cfg.arc + 'px';
+  });
+  dur.addEventListener('input', () => {
+    cfg.dur = +dur.value;
+    document.getElementById('dVal').textContent = cfg.dur.toFixed(2) + 's';
+  });
+  // 松开滑块就用新参数飞一件，不用再去找按钮
+  [arc, dur].forEach(el => el.addEventListener('change', () => fly(gsap.utils.random(0, 3, 1))));
+  document.getElementById('replay').addEventListener('click', runDemo);
+  document.getElementById('clear').addEventListener('click', clearCart);
+
+  if (reduce) {
+    document.getElementById('tip').textContent = '已开启「减少动态」：不飞行，商品直接计入购物车';
+  } else {
+    // 入场：顶栏和卡片依次浮上来，最后自动演示一遍
+    gsap.timeline({ delay: 0.1 })
+      .from('.bar > *', { y: -10, opacity: 0, duration: 0.5, ease: 'power2.out', stagger: 0.08 })
+      .from('.card', { y: 24, opacity: 0, duration: 0.6, ease: 'power3.out', stagger: 0.07 }, 0.1)
+      .call(runDemo, null, 0.7);
+  }
+</script>
+
+<!-- 图鉴浮条：返回图鉴 + 把这个 demo 的链接和提示词复制给 AI Agent -->
+<div id="galleryBar">
+  <a href="/" class="gb">← 图鉴</a>
+  <button class="gb" id="gbCopy">⧉ 复制给 AI</button>
+</div>
+<style>
+  #galleryBar {
+    position: fixed; left: 16px; bottom: 16px; z-index: 9999;
+    display: flex; gap: 8px; font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+  }
+  #galleryBar .gb {
+    font-size: 12px; line-height: 1; padding: 8px 12px; border-radius: 8px; cursor: pointer;
+    color: #8b949e; background: rgba(22,27,34,.92); border: 1px solid #30363d;
+    text-decoration: none; backdrop-filter: blur(8px); font-family: inherit;
+    transition: color .16s, border-color .16s;
+  }
+  #galleryBar .gb:hover { color: #58e6a8; border-color: #58e6a8; }
+  #galleryBar .gb.done { color: #58e6a8; border-color: rgba(88,230,168,.6); }
+  @media (max-width: 520px) { #galleryBar { left: 10px; bottom: 10px; } }
+</style>
+<script>
+  (function () {
+    var DEMO = 'cart-fly', TITLE = '购物车飞入';
+    var origin = location.protocol.startsWith('http') ? location.origin : 'https://gsap.leolee0812.site';
+    var text = '参考这个页面：' + origin + '/demos/' + DEMO + '.html\n' +
+      '它用 GSAP 3.13 实现了「' + TITLE + '」，源码里有完整可运行的实现和中文注释。\n' +
+      '请先读取这个链接，弄清它的实现方式（用到哪些插件、时间轴怎么排、缓动怎么选），\n' +
+      '然后把同样的效果复刻到我的项目里：沿用我现有的页面结构和配色，保持一致的节奏和手感。';
+    var btn = document.getElementById('gbCopy');
+    btn.addEventListener('click', function () {
+      var done = function () {
+        btn.textContent = '✓ 已复制，粘给你的 Agent';
+        btn.classList.add('done');
+        clearTimeout(btn._t);
+        btn._t = setTimeout(function () {
+          btn.textContent = '⧉ 复制给 AI';
+          btn.classList.remove('done');
+        }, 2200);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, done);
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+        done();
+      }
+    });
+  })();
+</script>
+</body>
+</html>
