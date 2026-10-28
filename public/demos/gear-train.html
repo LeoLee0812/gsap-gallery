@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1117'/%3E%3Cpath d='M9 22c3-9 8-13 14-12' stroke='%2358e6a8' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='23' cy='10' r='3' fill='%233b82f6'/%3E%3C/svg%3E">
+<title>齿轮联动</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+    min-height: 100vh; padding: 40px 20px 80px;
+    display: flex; flex-direction: column; align-items: center; gap: 22px;
+    overflow-x: hidden;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .sub { font-size: 14px; opacity: .55; margin-top: -12px; text-align: center; line-height: 1.6; }
+
+  .stage {
+    position: relative; width: 100%; max-width: 960px;
+    background:
+      radial-gradient(ellipse at 30% 45%, rgba(88,230,168,.07), transparent 55%),
+      radial-gradient(circle, rgba(255,255,255,.035) 1px, transparent 1.5px) 0 0 / 22px 22px,
+      #161b22;
+    border: 1px solid #30363d; border-radius: 16px; padding: 18px 18px 20px;
+    user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+  }
+  /* 画布的宽高比是固定的，齿数变了只挪 viewBox 这台「镜头」，页面高度不会跟着跳 */
+  #rig { display: block; width: 100%; aspect-ratio: 2.15 / 1; overflow: visible; }
+
+  .gear .body { stroke-width: 1.6; stroke-linejoin: round; }
+  .gear .ring { fill: none; stroke-width: 1; stroke-dasharray: 2 5; }
+  .gear .hub { fill: #0d1117; stroke-width: 1.6; }
+  /* 只有主动轮吃事件：其余齿轮的透明圆会盖到主动轮的齿上，必须让它们放行 */
+  .gear { pointer-events: none; }
+  .gear .hit { fill: transparent; }
+  #driver, #driver .hit { pointer-events: all; }
+  #driver { cursor: grab; touch-action: none; }
+  #driver.held { cursor: grabbing; }
+  .halo { fill: none; stroke: #58e6a8; stroke-width: 2; opacity: 0; pointer-events: none; }
+  .mesh { pointer-events: none; }
+  .hint { pointer-events: none; }
+  .hint path { fill: none; stroke: #58e6a8; stroke-width: 1.6; stroke-linecap: round; stroke-dasharray: 3 5; opacity: .7; }
+  .hint text { fill: #58e6a8; font-size: 13px; font-weight: 600; letter-spacing: 1px; }
+
+  /* 读数条：每个齿轮一枚小牌子，转速实时跳；正负号就是方向，相邻两轮永远反号 */
+  .legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 14px; }
+  .chip {
+    display: flex; align-items: center; gap: 8px; min-width: 0;
+    background: #1b212a; border: 1px solid #2a313b; border-radius: 10px;
+    padding: 7px 11px; font-size: 12px; color: #8b949e;
+  }
+  .chip i { width: 9px; height: 9px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); flex: none; }
+  .chip b { color: #e6edf3; font-weight: 600; }
+  .chip .rpm {
+    font-family: ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums;
+    color: var(--c); min-width: 64px; text-align: right;
+  }
+  .chip .dir { display: inline-block; width: 12px; text-align: center; color: var(--c); }
+
+  .tip { text-align: center; font-size: 12px; color: #6e7681; margin-top: 12px; letter-spacing: .5px; min-height: 18px; }
+
+  .panel {
+    display: flex; gap: 22px 28px; flex-wrap: wrap; justify-content: center; align-items: flex-end;
+    background: #161b22; border: 1px solid #30363d; border-radius: 14px;
+    padding: 16px 22px; max-width: 960px; width: 100%;
+  }
+  .ctrl { display: flex; flex-direction: column; gap: 7px; }
+  .ctrl label { font-size: 12px; opacity: .6; }
+  input[type=range] { width: 160px; accent-color: #58e6a8; }
+  .val { font-size: 12px; color: #58e6a8; font-family: ui-monospace, Menlo, monospace; }
+  .btns { display: flex; gap: 10px; }
+  .replay {
+    background: #58e6a8; color: #0d1117; border: 0; border-radius: 24px;
+    padding: 10px 24px; font-size: 14px; font-weight: 600; cursor: pointer;
+    font-family: inherit; transition: transform .16s, box-shadow .16s;
+  }
+  .replay:hover { box-shadow: 0 0 22px rgba(88,230,168,.4); }
+  .replay:active { transform: scale(.96); }
+  .ghost-btn {
+    background: none; color: #8b949e; border: 1px solid #30363d; border-radius: 24px;
+    padding: 9px 20px; font-size: 14px; cursor: pointer; font-family: inherit;
+    transition: color .16s, border-color .16s; min-width: 108px;
+  }
+  .ghost-btn:hover { color: #e6edf3; border-color: #8b949e; }
+  .ghost-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  .note { font-size: 12px; color: #6e7681; text-align: center; max-width: 600px; line-height: 1.7; }
+  .note code { color: #58e6a8; font-family: ui-monospace, Menlo, monospace; }
+
+  @media (max-width: 600px) {
+    body { padding: 28px 14px 72px; gap: 18px; }
+    .stage { padding: 12px 10px 16px; }
+    #rig { aspect-ratio: .84 / 1; }
+    .legend { gap: 6px; }
+    .chip { padding: 6px 9px; gap: 6px; font-size: 11px; }
+    .chip .rpm { min-width: 54px; }
+    .panel { padding: 14px 16px; gap: 16px 20px; justify-content: flex-start; }
+    input[type=range] { width: 140px; }
+  }
+</style>
+</head>
+<body>
+  <h1>齿轮联动</h1>
+  <p class="sub">大小齿轮按齿数比咬合转动：按住绿色主动轮拖着转、甩一下让它滑行，整条齿轮链跟着走</p>
+
+  <div class="stage">
+    <svg id="rig" role="img" aria-label="五个互相咬合的齿轮，绿色主动轮可以拖动旋转">
+      <defs>
+        <radialGradient id="glow">
+          <stop offset="0" stop-color="#e6edf3" stop-opacity=".55"/>
+          <stop offset="1" stop-color="#e6edf3" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <g id="gears"></g>
+      <g id="meshes"></g>
+      <g class="hint" id="hint"><path id="hintArc"/><text id="hintTxt">拖我转</text></g>
+    </svg>
+    <div class="legend" id="legend"></div>
+    <p class="tip" id="tip">电机带着转；随时按住主动轮接管，松手后电机慢慢重新接上</p>
+  </div>
+
+  <div class="panel">
+    <div class="ctrl">
+      <label>主动轮齿数 <span class="val" id="nVal">24 齿</span></label>
+      <input type="range" id="teeth" min="12" max="40" step="1" value="24">
+    </div>
+    <div class="ctrl">
+      <label>电机转速 <span class="val" id="sVal">+8 rpm</span></label>
+      <input type="range" id="speed" min="-20" max="20" step="1" value="8">
+    </div>
+    <div class="btns">
+      <button class="ghost-btn" id="motor">⏸ 关电机</button>
+      <button class="replay" id="replay">▶ 重新装配</button>
+    </div>
+  </div>
+
+  <p class="note">
+    相邻两轮的转角不靠逐帧累加，而是每帧从上一级直接算：<code>θ子 = φ + 180 − 齿距子 × (0.5 − (φ − θ父) / 齿距父)</code>，
+    φ 是两轮圆心连线的方向。这样转多少圈都不会累积误差，齿永远卡在对方的齿槽里；转速比自然就是齿数的反比。
+    拖动交给 <code>Draggable</code> 的 <code>type: 'rotation'</code>，甩出去的滑行由 <code>InertiaPlugin</code> 接手。
+  </p>
+
+<script src="../lib/gsap.min.js"></script>
+<script src="../lib/Draggable.min.js"></script>
+<script src="../lib/InertiaPlugin.min.js"></script>
+<script>
+  gsap.registerPlugin(Draggable, InertiaPlugin);
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const narrow = matchMedia('(max-width: 600px)');
+
+  // 模数：每一齿在节圆上占多少像素。所有齿轮共用一个模数，才能互相咬合
+  const M = 7;
+  const NS = 'http://www.w3.org/2000/svg';
+
+  // 齿轮链：p 是上一级（和谁咬合），phi 是从上一级圆心指向自己的方向。
+  // 宽屏横着铺开，窄屏把链条折成竖向，同一套逻辑只换角度。
+  // 这两组角度都在 12～40 齿的全范围里验算过，不相邻的齿轮之间至少留 3 个模数的空隙
+  const GEARS = [
+    { id: 'A', name: '主动轮', n: 24,  c: '#58e6a8' },
+    { id: 'B', name: '小齿轮', n: 12,  c: '#3b82f6', p: 0 },
+    { id: 'C', name: '大齿轮', n: 30,  c: '#8aa4c8', p: 1 },
+    { id: 'D', name: '高速轮', n: 10,  c: '#f0883e', p: 2 },
+    { id: 'E', name: '侧挂轮', n: 18,  c: '#7aa7ff', p: 0 }
+  ];
+  const ANGLES = {
+    wide: [0, -15, 22, -48, 150],
+    tall: [0, 62, 112, 30, 185]
+  };
+
+  const rad = d => d * Math.PI / 180;
+  const pt = (r, a) => `${(r * Math.cos(a)).toFixed(2)} ${(r * Math.sin(a)).toFixed(2)}`;
+
+  // ---------- 画齿轮 ----------
+  // 齿形是简化的渐开线：齿根到齿顶用一段向外鼓的二次曲线，比直线梯形更像真齿轮。
+  // 第 0 个齿正对局部 0°，后面算咬合相位全靠这个约定
+  function gearPath(n) {
+    const r = M * n / 2, ra = r + M, rf = r - 1.25 * M, p = Math.PI * 2 / n;
+    let d = `M${pt(rf, -0.5 * p)}`;
+    for (let i = 0; i < n; i++) {
+      const a = i * p;
+      d += `A${rf} ${rf} 0 0 1 ${pt(rf, a - 0.3 * p)}` +
+           `Q${pt(r * 1.02, a - 0.245 * p)} ${pt(ra, a - 0.16 * p)}` +
+           `A${ra} ${ra} 0 0 1 ${pt(ra, a + 0.16 * p)}` +
+           `Q${pt(r * 1.02, a + 0.245 * p)} ${pt(rf, a + 0.3 * p)}` +
+           `A${rf} ${rf} 0 0 1 ${pt(rf, a + 0.5 * p)}`;
+    }
+    d += 'Z';
+    // 大齿轮掏几个减重孔：既好看，也让转动一眼可见。evenodd 填充下孔自然是镂空的
+    const ri = rf - 1.4 * M, rh = Math.max(9, r * 0.2);
+    if (n >= 14) {
+      const k = n >= 26 ? 6 : 5;
+      const rc = (ri + rh) / 2;
+      const hr = Math.min((ri - rh) / 2 - 3, rc * Math.sin(Math.PI / k) - 4);
+      for (let i = 0; i < k; i++) {
+        const a = (i + 0.5) * Math.PI * 2 / k;
+        const cx = rc * Math.cos(a), cy = rc * Math.sin(a);
+        d += `M${(cx + hr).toFixed(2)} ${cy.toFixed(2)}a${hr.toFixed(2)} ${hr.toFixed(2)} 0 1 0 ${(-2 * hr).toFixed(2)} 0` +
+             `a${hr.toFixed(2)} ${hr.toFixed(2)} 0 1 0 ${(2 * hr).toFixed(2)} 0Z`;
+      }
+    }
+    return { d, r, ra, ri, rh };
+  }
+
+  const el = (tag, attrs, parent) => {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  };
+
+  const gearsLayer = document.getElementById('gears');
+  const meshLayer = document.getElementById('meshes');
+  const rig = document.getElementById('rig');
+
+  // 每个齿轮两层：外层 g 只管位置，内层 rot 只管转角，互不干扰
+  GEARS.forEach((g, i) => {
+    g.depth = i === 0 ? 0 : GEARS[g.p].depth + 1;
+    g.outer = el('g', { class: 'gear' }, gearsLayer);
+    if (i === 0) g.halo = el('circle', { class: 'halo' }, g.outer);
+    g.rot = el('g', i === 0 ? { id: 'driver' } : {}, g.outer);
+    // 透明圆盖住整个齿轮：一是齿缝里也能按住，二是让包围盒正好以圆心对称，
+    // 奇数齿时 transformOrigin: 50% 50% 才落在真正的轴心上，不会转着转着晃
+    g.hit = el('circle', { class: 'hit' }, g.rot);
+    g.body = el('path', { class: 'body', 'fill-rule': 'evenodd', stroke: g.c, fill: g.c, 'fill-opacity': i === 0 ? .22 : .13 }, g.rot);
+    g.ring = el('circle', { class: 'ring', stroke: g.c, 'stroke-opacity': .45 }, g.rot);
+    // 一颗记号点：慢速时也能看清它在转、转了多少
+    g.mark = el('circle', { fill: g.c }, g.rot);
+    g.hub = el('circle', { class: 'hub', stroke: g.c }, g.rot);
+    g.axle = el('circle', { r: 3, fill: g.c }, g.rot);
+    g.set = gsap.quickSetter(g.rot, 'rotation', 'deg');
+    if (i > 0) {
+      g.mesh = el('g', { class: 'mesh' }, meshLayer);
+      el('circle', { r: 11, fill: 'url(#glow)' }, g.mesh);
+    }
+  });
+  if (reduce) meshLayer.style.display = 'none';
+
+  function shapeGear(g) {
+    const s = gearPath(g.n);
+    g.r = s.r; g.ra = s.ra;
+    g.pitch = 360 / g.n;
+    g.body.setAttribute('d', s.d);
+    g.hit.setAttribute('r', s.ra + 4);
+    g.ring.setAttribute('r', s.ri);
+    g.hub.setAttribute('r', s.rh);
+    g.mark.setAttribute('cx', (s.ri + s.r - 1.25 * M) / 2);
+    g.mark.setAttribute('r', Math.max(2.5, M * 0.42));
+    if (g.halo) g.halo.setAttribute('r', s.ra + 7);
+    gsap.set(g.rot, { transformOrigin: '50% 50%' });
+  }
+
+  // 按链条顺序算圆心：圆心距 = 两节圆半径之和，这是能咬合的唯一距离
+  function solve() {
+    const A = ANGLES[narrow.matches ? 'tall' : 'wide'];
+    GEARS.forEach((g, i) => {
+      g.phi = A[i];
+      if (i === 0) { g.x = 0; g.y = 0; return; }
+      const P = GEARS[g.p], d = P.r + g.r;
+      g.x = P.x + d * Math.cos(rad(g.phi));
+      g.y = P.y + d * Math.sin(rad(g.phi));
+      g.mx = P.x + P.r * Math.cos(rad(g.phi));
+      g.my = P.y + P.r * Math.sin(rad(g.phi));
+    });
+    const pad = 46;
+    const x0 = Math.min(...GEARS.map(g => g.x - g.ra)) - pad, x1 = Math.max(...GEARS.map(g => g.x + g.ra)) + pad;
+    const y0 = Math.min(...GEARS.map(g => g.y - g.ra)) - pad, y1 = Math.max(...GEARS.map(g => g.y + g.ra)) + pad;
+    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  }
+
+  // viewBox 当成一台镜头：齿数一变，镜头跟着平移缩放，始终把整条链框在画面中间
+  const cam = { x: 0, y: 0, w: 100, h: 100 };
+  const applyCam = () => rig.setAttribute('viewBox', `${cam.x.toFixed(1)} ${cam.y.toFixed(1)} ${cam.w.toFixed(1)} ${cam.h.toFixed(1)}`);
+
+  function placeAll(animate) {
+    const box = solve();
+    const d = animate && !reduce ? 0.55 : 0;
+    GEARS.forEach(g => {
+      gsap.to(g.outer, { x: g.x, y: g.y, duration: d, ease: 'power3.inOut', overwrite: 'auto' });
+      if (g.mesh) gsap.to(g.mesh, { x: g.mx, y: g.my, duration: d, ease: 'power3.inOut', overwrite: 'auto' });
+    });
+    gsap.to(cam, { ...box, duration: d * 1.2, ease: 'power3.inOut', overwrite: 'auto', onUpdate: applyCam });
+    if (!d) applyCam();
+    placeHint();
+  }
+
+  // 提示箭头画在主动轮左上方，沿外圈的一小段弧，指向顺时针
+  function placeHint() {
+    const A = GEARS[0], R = A.ra + 16;
+    const a0 = rad(narrow.matches ? -150 : -160), a1 = rad(narrow.matches ? -95 : -105);
+    const end = { x: R * Math.cos(a1), y: R * Math.sin(a1) };
+    const tan = a1 + Math.PI / 2;
+    const head = [-0.5, 0.5].map(s => `${(end.x - 7 * Math.cos(tan + s)).toFixed(1)} ${(end.y - 7 * Math.sin(tan + s)).toFixed(1)}`);
+    document.getElementById('hintArc').setAttribute('d',
+      `M${pt(R, a0)}A${R} ${R} 0 0 1 ${end.x.toFixed(1)} ${end.y.toFixed(1)}M${head[0]}L${end.x.toFixed(1)} ${end.y.toFixed(1)}L${head[1]}`);
+    const am = (a0 + a1) / 2, tR = R + 16;
+    const t = document.getElementById('hintTxt');
+    t.setAttribute('x', (tR * Math.cos(am)).toFixed(1));
+    t.setAttribute('y', (tR * Math.sin(am)).toFixed(1));
+    t.setAttribute('text-anchor', 'end');
+  }
+
+  // ---------- 读数条 ----------
+  const legend = document.getElementById('legend');
+  legend.innerHTML = GEARS.map(g => `
+    <div class="chip" style="--c:${g.c}"><i></i><b>${g.id}</b><span class="n">${g.n} 齿</span>
+      <span class="rpm">0.0</span><span class="dir">·</span></div>`).join('');
+  GEARS.forEach((g, i) => {
+    const c = legend.children[i];
+    g.rpmEl = c.querySelector('.rpm');
+    g.nEl = c.querySelector('.n');
+    g.dirEl = c.querySelector('.dir');
+  });
+
+  // ---------- 驱动 ----------
+  // 唯一的真值是主动轮的转角 ang；其余四个齿轮每帧从它推出来。
+  // gain 是电机的「离合」：0 完全断开，1 完全接上，开关电机、手接管都只是在推这个数
+  const state = { ang: 0, rpm: 8, gain: 0, motor: !reduce };
+  const A = GEARS[0];
+  let drag;
+
+  function follow() {
+    A.set(state.ang);
+    for (let i = 1; i < GEARS.length; i++) {
+      const g = GEARS[i], P = GEARS[g.p];
+      // P 上正对咬合方向的那一点，处在第几个齿的什么位置（小数部分即相位）；
+      // 子轮在同一方向上必须正好是齿槽，也就是相位互补 0.5
+      g.ang = g.phi + 180 - g.pitch * (0.5 - (g.phi - P.ang) / P.pitch);
+      g.set(g.ang);
+    }
+  }
+  A.ang = 0;
+
+  let lastAng = 0, vel = 0, readT = 0;
+  gsap.ticker.add((time, dt) => {
+    const held = drag && (drag.isPressed || drag.isThrowing);
+    if (held) state.ang = +gsap.getProperty(A.rot, 'rotation');
+    else state.ang += state.rpm * 6 * state.gain * dt / 1000;
+    A.ang = state.ang;
+    follow();
+
+    // 角速度做一次指数平滑，读数不至于每帧乱跳；读数每 80ms 刷一次，眼睛跟得上
+    const v = (state.ang - lastAng) / Math.max(dt, 1) * 1000 / 6;
+    lastAng = state.ang;
+    vel += (v - vel) * 0.18;
+    readT += dt;
+    if (readT > 80) { readT = 0; readout(); }
+  });
+
+  // 转速比 = 齿数反比；每过一级方向反一次，所以符号看层级的奇偶
+  function readout() {
+    GEARS.forEach(g => {
+      const r = vel * (A.n / g.n) * (g.depth % 2 ? -1 : 1);
+      const s = Math.abs(r) < 0.05 ? 0 : r;
+      g.rpmEl.textContent = (s > 0 ? '+' : s < 0 ? '−' : ' ') + Math.abs(s).toFixed(1) + ' rpm';
+      g.dirEl.textContent = s > 0 ? '↻' : s < 0 ? '↺' : '·';
+    });
+  }
+
+  // 离合：接上用 inOut，像电机慢慢吃上劲；断开用 out，靠惯性多转一会儿才停
+  function clutch(on, dur) {
+    gsap.to(state, { gain: on ? 1 : 0, duration: reduce ? 0 : dur, ease: on ? 'power2.inOut' : 'power2.out', overwrite: true });
+  }
+
+  // ---------- 拖动主动轮 ----------
+  const tip = document.getElementById('tip');
+  const hint = document.getElementById('hint');
+  let hinted = false;
+
+  drag = Draggable.create(A.rot, {
+    type: 'rotation',
+    inertia: !reduce,
+    // 阻力调大一点：齿轮链有分量，甩出去应该滑一阵就停，而不是转个没完
+    throwResistance: 1400,
+    maxDuration: 3,
+    onPress() {
+      gsap.killTweensOf(state);
+      // 手一按上去离合立刻断开，之后转角完全听手的，电机不再往里加量
+      state.gain = 0;
+      A.rot.classList.add('held');
+      if (!reduce) gsap.to(A.halo, { opacity: .55, scale: 1, duration: .25, ease: 'power2.out', overwrite: true, transformOrigin: '50% 50%' });
+      if (!hinted) {
+        hinted = true;
+        gsap.to(hint, { opacity: 0, duration: reduce ? 0 : .3, onComplete: () => hint.style.display = 'none' });
+      }
+    },
+    onRelease() {
+      A.rot.classList.remove('held');
+      gsap.to(A.halo, { opacity: 0, duration: reduce ? 0 : .5, ease: 'power2.out', overwrite: true });
+      if (!this.isThrowing) handBack();
+    },
+    onThrowComplete: handBack
+  })[0];
+
+  // 手放开、滑行也停了，才让电机慢慢重新接上，不和惯性抢
+  function handBack() {
+    if (state.motor) clutch(true, 1.4);
+    tip.textContent = state.motor ? '松手了，电机重新接上' : '电机关着，齿轮停在你放手的位置';
+  }
+
+  // ---------- 控件 ----------
+  const teeth = document.getElementById('teeth');
+  const speed = document.getElementById('speed');
+  const motorBtn = document.getElementById('motor');
+
+  teeth.addEventListener('input', () => {
+    A.n = +teeth.value;
+    document.getElementById('nVal').textContent = A.n + ' 齿';
+    A.nEl.textContent = A.n + ' 齿';
+    shapeGear(A);
+    // 主动轮刚换完齿形会顶住邻居半拍，邻居顺势被推开，正好像重新装配
+    placeAll(true);
+    if (!reduce) gsap.fromTo(A.body, { scale: .94, transformOrigin: '50% 50%' }, { scale: 1, duration: .5, ease: 'back.out(2.5)', overwrite: true });
+    tip.textContent = `主动轮 ${A.n} 齿 → 高速轮 ${GEARS[3].n} 齿，转速放大 ${(A.n / GEARS[3].n).toFixed(1)} 倍`;
+  });
+
+  speed.addEventListener('input', () => {
+    state.rpm = +speed.value;
+    document.getElementById('sVal').textContent = (state.rpm > 0 ? '+' : state.rpm < 0 ? '−' : '') + Math.abs(state.rpm) + ' rpm';
+  });
+
+  function setMotor(on) {
+    state.motor = on;
+    motorBtn.textContent = on ? '⏸ 关电机' : '▶ 开电机';
+    const busy = drag.isPressed || drag.isThrowing;
+    if (!busy) clutch(on, on ? 1.2 : 1.6);
+    tip.textContent = on ? '电机接上，越转越稳' : '电机断开，齿轮靠惯性慢慢停下';
+  }
+  motorBtn.addEventListener('click', () => setMotor(!state.motor));
+
+  // ---------- 装配动画：从主动轮开始沿链条一个个装上去，最后电机起转 ----------
+  let intro;
+  function assemble() {
+    if (intro) intro.kill();
+    gsap.killTweensOf(state);
+    state.gain = 0;
+    const outers = [0, 1, 4, 2, 3].map(i => GEARS[i].outer);
+    intro = gsap.timeline();
+    intro
+      .fromTo(outers, { scale: .2, opacity: 0, rotation: -60, transformOrigin: '50% 50%' },
+        { scale: 1, opacity: 1, rotation: 0, duration: .75, ease: 'back.out(1.5)', stagger: .12 })
+      .fromTo('.mesh', { opacity: 0 }, { opacity: 1, duration: .4, stagger: .08 }, '-=.3')
+      .call(() => { if (state.motor && !drag.isPressed) clutch(true, 1.6); }, null, '-=.2');
+    if (!hinted) intro.fromTo(hint, { opacity: 0, x: -8 }, { opacity: 1, x: 0, duration: .5, ease: 'power2.out' }, .5);
+  }
+  document.getElementById('replay').addEventListener('click', assemble);
+
+  // 链条每转一圈，咬合点轻轻闪一下太吵；只让它们随转速呼吸，静止时几乎看不见
+  gsap.ticker.add(() => {
+    if (reduce) return;
+    const k = Math.min(1, Math.abs(vel) / 15);
+    meshLayer.style.opacity = (0.25 + 0.75 * k).toFixed(2);
+  });
+
+  // ---------- 起步 ----------
+  GEARS.forEach(shapeGear);
+  placeAll(false);
+  follow();
+  readout();
+  narrow.addEventListener('change', () => placeAll(false));
+
+  if (reduce) {
+    motorBtn.disabled = true;
+    motorBtn.textContent = '电机已停';
+    tip.textContent = '已开启「减少动态」：电机不自动转，拖动主动轮仍可手动带动整条链';
+  } else {
+    assemble();
+  }
+</script>
+
+<!-- 图鉴浮条：返回图鉴 + 把这个 demo 的链接和提示词复制给 AI Agent -->
+<div id="galleryBar">
+  <a href="/" class="gb">← 图鉴</a>
+  <button class="gb" id="gbCopy">⧉ 复制给 AI</button>
+</div>
+<style>
+  #galleryBar {
+    position: fixed; left: 16px; bottom: 16px; z-index: 9999;
+    display: flex; gap: 8px; font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+  }
+  #galleryBar .gb {
+    font-size: 12px; line-height: 1; padding: 8px 12px; border-radius: 8px; cursor: pointer;
+    color: #8b949e; background: rgba(22,27,34,.92); border: 1px solid #30363d;
+    text-decoration: none; backdrop-filter: blur(8px); font-family: inherit;
+    transition: color .16s, border-color .16s;
+  }
+  #galleryBar .gb:hover { color: #58e6a8; border-color: #58e6a8; }
+  #galleryBar .gb.done { color: #58e6a8; border-color: rgba(88,230,168,.6); }
+  @media (max-width: 520px) { #galleryBar { left: 10px; bottom: 10px; } }
+</style>
+<script>
+  (function () {
+    var DEMO = 'gear-train', TITLE = '齿轮联动';
+    var origin = location.protocol.startsWith('http') ? location.origin : 'https://gsap.leolee0812.site';
+    var text = '参考这个页面：' + origin + '/demos/' + DEMO + '.html\n' +
+      '它用 GSAP 3.13 实现了「' + TITLE + '」，源码里有完整可运行的实现和中文注释。\n' +
+      '请先读取这个链接，弄清它的实现方式（用到哪些插件、时间轴怎么排、缓动怎么选），\n' +
+      '然后把同样的效果复刻到我的项目里：沿用我现有的页面结构和配色，保持一致的节奏和手感。';
+    var btn = document.getElementById('gbCopy');
+    btn.addEventListener('click', function () {
+      var done = function () {
+        btn.textContent = '✓ 已复制，粘给你的 Agent';
+        btn.classList.add('done');
+        clearTimeout(btn._t);
+        btn._t = setTimeout(function () {
+          btn.textContent = '⧉ 复制给 AI';
+          btn.classList.remove('done');
+        }, 2200);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, done);
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+        done();
+      }
+    });
+  })();
+</script>
+</body>
+</html>
