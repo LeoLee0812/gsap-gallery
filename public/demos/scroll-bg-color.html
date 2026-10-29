@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1117'/%3E%3Cpath d='M9 22c3-9 8-13 14-12' stroke='%2358e6a8' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='23' cy='10' r='3' fill='%233b82f6'/%3E%3C/svg%3E">
+<title>段落换背景色</title>
+<style>
+  /* 整页只认三个变量：底色、界面前景、点缀色。JS 每帧只改这三个值，
+     所有用到它们的地方（body、导航点、色块）自动跟着变，不用逐个元素去 tween */
+  :root { --bg: #0d1117; --ui: #e6edf3; --ui-accent: #58e6a8; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { overflow-x: hidden; }
+  body {
+    background: var(--bg); color: #e6edf3;
+    font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+    -webkit-font-smoothing: antialiased; overflow-x: hidden;
+  }
+
+  /* ---------- 章节 ----------
+     每章的文字颜色是写死在章节自己身上的（--fg / --muted / --accent），不跟全局走。
+     原因：过渡区正中间，底色是两章的中间色，如果文字也取中间色，那一刻对比度最低，字会糊掉。
+     文字各用各的，正在读的那段永远是设计好的配色 */
+  .chap {
+    position: relative; min-height: 100vh; min-height: 100svh;
+    display: grid; grid-template-columns: 1.1fr 1fr; align-items: center; gap: 48px;
+    max-width: 1120px; margin: 0 auto; padding: 120px 64px;
+    color: var(--fg);
+  }
+  .kicker {
+    display: inline-flex; align-items: center; gap: 10px;
+    font-family: ui-monospace, Menlo, monospace; font-size: 12px; letter-spacing: .16em;
+    color: var(--accent);
+  }
+  .kicker::before { content: ''; width: 28px; height: 1px; background: currentColor; }
+  .chap h2 {
+    margin-top: 18px; font-size: clamp(44px, 7.2vw, 96px); font-weight: 800;
+    letter-spacing: -.03em; line-height: 1;
+  }
+  .chap h2 .w { display: inline-block; }
+  .chap p {
+    margin-top: 22px; max-width: 440px; font-size: clamp(15px, 1.5vw, 17px);
+    line-height: 1.8; color: var(--muted);
+  }
+  .swatch {
+    margin-top: 28px; display: inline-flex; align-items: center; gap: 10px;
+    font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--muted);
+  }
+  .swatch i { width: 14px; height: 14px; border-radius: 4px; background: var(--own); box-shadow: 0 0 0 1px var(--muted); }
+  .art { justify-self: center; width: min(100%, 400px); aspect-ratio: 1; color: var(--accent); }
+  .art svg { width: 100%; height: 100%; display: block; overflow: visible; }
+
+  /* 序章：标题屏 */
+  .intro { grid-template-columns: 1fr; text-align: center; justify-items: center; align-content: center; gap: 0; padding-top: 96px; padding-bottom: 48px; }
+  .eyebrow {
+    font-size: 12px; letter-spacing: .14em; color: #58e6a8;
+    padding: 6px 12px; border: 1px solid rgba(88,230,168,.35); border-radius: 999px;
+  }
+  .intro h1 {
+    margin-top: 22px; font-size: clamp(44px, 8.6vw, 112px); font-weight: 800;
+    letter-spacing: -.03em; line-height: 1.04;
+  }
+  .intro h1 .line { display: block; }
+  .intro h1 em { font-style: normal; color: #58e6a8; }
+  .intro .sub { margin: 22px auto 0; max-width: 520px; color: #8b949e; }
+  /* 序章底部一排色卡：先把接下来要经过的颜色亮给用户看，往下滚时心里有预期 */
+  .strip { margin-top: 34px; display: flex; gap: 8px; justify-content: center; }
+  .strip i { width: 34px; height: 8px; border-radius: 4px; }
+  .hint {
+    margin-top: 40px; display: flex; flex-direction: column; align-items: center; gap: 10px;
+    font-size: 12px; letter-spacing: .2em; color: rgba(230,237,243,.6);
+  }
+  .hint i { display: block; width: 1px; height: 38px; background: linear-gradient(#e6edf3, transparent); transform-origin: top; }
+
+  /* 尾声：回到图鉴的深色，放三条要点 */
+  .outro { grid-template-columns: 1fr; align-content: center; }
+  .outro h2 { font-size: clamp(30px, 4.4vw, 52px); }
+  .outro h2 span { color: #58e6a8; }
+  .grid { margin-top: 36px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .tip { background: #161b22; border: 1px solid #30363d; border-radius: 14px; padding: 20px; }
+  .tip .n { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: #3b82f6; }
+  .tip h3 { margin-top: 8px; font-size: 16px; color: #e6edf3; }
+  .tip p { margin-top: 8px; font-size: 13px; line-height: 1.75; color: #8b949e; max-width: none; }
+  .tip code { color: #58e6a8; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+
+  /* ---------- 右侧章节导航：颜色取全局变量，所以它本身也在跟着换色 ---------- */
+  .dots {
+    position: fixed; right: 22px; top: 50%; transform: translateY(-50%); z-index: 15;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .dots button {
+    width: 8px; height: 8px; border-radius: 4px; border: 0; padding: 0; cursor: pointer;
+    background: var(--ui); opacity: .35;
+    transition: height .45s cubic-bezier(.2,.8,.2,1), opacity .3s, background-color .3s;
+  }
+  .dots button::after { content: ''; display: block; margin: -8px; width: 24px; height: calc(100% + 16px); }
+  .dots button.on { height: 28px; opacity: 1; background: var(--ui-accent); }
+
+  /* ---------- 参数面板：和图鉴其他滚动 demo 一致，手机上收成按钮 ---------- */
+  .panel {
+    position: fixed; top: 14px; right: 14px; z-index: 20;
+    display: flex; align-items: center; gap: 18px;
+    background: rgba(22,27,34,.88); border: 1px solid #30363d; border-radius: 14px;
+    padding: 10px 12px 10px 16px; backdrop-filter: blur(10px);
+    box-shadow: 0 10px 30px rgba(0,0,0,.3);
+  }
+  .panel .body { display: flex; align-items: center; gap: 18px; }
+  .seg { display: flex; background: #0d1117; border: 1px solid #30363d; border-radius: 20px; padding: 2px; }
+  .seg button {
+    border: 0; background: none; color: #8b949e; font: inherit; font-size: 12px;
+    padding: 6px 12px; border-radius: 16px; cursor: pointer; white-space: nowrap;
+    transition: color .2s, background-color .2s;
+  }
+  .seg button.on { background: #30363d; color: #58e6a8; }
+  .ctrl { display: flex; flex-direction: column; gap: 4px; }
+  .ctrl[hidden] { display: none; }
+  .ctrl label { font-size: 12px; color: #8b949e; display: flex; justify-content: space-between; gap: 10px; }
+  .val { color: #58e6a8; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+  input[type=range] { width: 130px; accent-color: #58e6a8; }
+  .chip { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #8b949e; min-width: 128px; }
+  .chip i { width: 22px; height: 22px; border-radius: 6px; background: var(--bg); box-shadow: inset 0 0 0 1px rgba(255,255,255,.18); flex: none; }
+  .chip span { display: flex; flex-direction: column; line-height: 1.35; }
+  .chip b { color: #e6edf3; font-weight: 600; }
+  .chip code { font-family: ui-monospace, Menlo, monospace; color: #58e6a8; }
+  .head { display: flex; gap: 8px; }
+  .btn {
+    background: #58e6a8; color: #0d1117; border: 0; border-radius: 20px;
+    padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+    font-family: inherit; transition: transform .16s, box-shadow .16s;
+  }
+  .btn:hover { box-shadow: 0 0 20px rgba(88,230,168,.4); }
+  .btn:active { transform: scale(.96); }
+  .btn:disabled { opacity: .5; cursor: default; box-shadow: none; }
+  .btn.ghost { background: #0d1117; color: #8b949e; border: 1px solid #30363d; display: none; }
+  .btn.ghost.on { color: #58e6a8; border-color: #58e6a8; }
+
+  @media (max-width: 860px) {
+    .chap { grid-template-columns: 1fr; gap: 28px; padding: 104px 24px 88px; align-content: center; }
+    .chap .art { order: -1; width: min(62vw, 260px); justify-self: start; }
+    .intro .art { order: 0; }
+    .grid { grid-template-columns: 1fr; }
+    .dots { right: 8px; gap: 8px; }
+    .dots button { width: 5px; height: 5px; }
+    .dots button.on { height: 20px; }
+    .panel { top: 10px; right: 10px; flex-wrap: wrap; gap: 10px; padding: 8px 8px 8px 12px; justify-content: space-between; }
+    .panel .body { display: none; order: 3; width: 100%; flex-wrap: wrap; gap: 12px 16px; padding: 4px 4px 6px 0; }
+    .panel.open { left: 10px; }
+    .panel.open .body { display: flex; }
+    .btn.ghost { display: inline-block; }
+    .ctrl { flex: 1 1 140px; }
+    input[type=range] { width: 100%; }
+  }
+  @media (max-width: 420px) { .chip { min-width: 0; } }
+</style>
+</head>
+<body>
+  <div class="panel" id="panel">
+    <div class="chip"><i></i><span><b id="chapName">序 · 深夜</b><code id="hex">#0d1117</code></span></div>
+    <div class="body">
+      <div class="seg" role="group" aria-label="过渡方式">
+        <button class="on" data-mode="scrub">滚动擦洗</button>
+        <button data-mode="toggle">越线切换</button>
+      </div>
+      <div class="seg" role="group" aria-label="插值色彩空间">
+        <button class="on" data-space="rgb">RGB</button>
+        <button data-space="hsl">HSL</button>
+      </div>
+      <div class="ctrl" id="zoneCtrl">
+        <label>过渡区 <span class="val" id="zVal">60vh</span></label>
+        <input type="range" id="zone" min="10" max="100" step="5" value="60" aria-label="过渡区高度">
+      </div>
+      <div class="ctrl" id="durCtrl" hidden>
+        <label>切换时长 <span class="val" id="dVal">0.9s</span></label>
+        <input type="range" id="dur" min="0.2" max="2" step="0.1" value="0.9" aria-label="切换时长">
+      </div>
+    </div>
+    <div class="head">
+      <button class="btn ghost" id="toggle" aria-expanded="false">⚙ 参数</button>
+      <button class="btn" id="play">▶ 自动巡游</button>
+    </div>
+  </div>
+
+  <nav class="dots" id="dots" aria-label="章节"></nav>
+
+  <section class="chap intro" data-name="序 · 深夜">
+    <span class="eyebrow">ScrollTrigger · 底色插值</span>
+    <h1><span class="line">段落换</span><span class="line"><em>背景色</em></span></h1>
+    <p class="sub">往下滚，每到一章，整页底色就平滑地换成这一章的颜色。浅色章节的文字会自己换成深色，从头到尾都看得清。</p>
+    <div class="strip" id="strip"></div>
+    <div class="hint" id="hint">向下滚动<i></i></div>
+  </section>
+
+  <section class="chap" data-name="01 · 深海">
+    <div class="txt">
+      <span class="kicker">CHAPTER 01</span>
+      <h2>深海</h2>
+      <p>往下沉，光线一层层被吃掉，只剩冷蓝。底色从图鉴的墨黑滑进海军蓝，过渡区正好压在两章交界线上。</p>
+      <span class="swatch"><i></i><code></code></span>
+    </div>
+    <div class="art"><svg viewBox="0 0 400 400" id="artSea" aria-hidden="true"></svg></div>
+  </section>
+
+  <section class="chap" data-name="02 · 晨雾">
+    <div class="txt">
+      <span class="kicker">CHAPTER 02</span>
+      <h2>晨雾</h2>
+      <p>一下子亮起来的米白。深底换浅底是最考验的一步：文字颜色写在章节自己身上，不跟着底色一起插值，过渡中途也不会糊成一片灰。</p>
+      <span class="swatch"><i></i><code></code></span>
+    </div>
+    <div class="art"><svg viewBox="0 0 400 400" id="artFog" aria-hidden="true"></svg></div>
+  </section>
+
+  <section class="chap" data-name="03 · 苔原">
+    <div class="txt">
+      <span class="kicker">CHAPTER 03</span>
+      <h2>苔原</h2>
+      <p>再落回深色，是带点湿气的墨绿。点缀色正好借用图鉴的主色，章节导航的亮点也一起换成了这一章的绿。</p>
+      <span class="swatch"><i></i><code></code></span>
+    </div>
+    <div class="art"><svg viewBox="0 0 400 400" id="artMoss" aria-hidden="true"></svg></div>
+  </section>
+
+  <section class="chap" data-name="04 · 落日">
+    <div class="txt">
+      <span class="kicker">CHAPTER 04</span>
+      <h2>落日</h2>
+      <p>饱和度最高的一章。暖橙底配深褐字，右边的太阳被一条条切开，跟着滚动慢慢往下沉。</p>
+      <span class="swatch"><i></i><code></code></span>
+    </div>
+    <div class="art"><svg viewBox="0 0 400 400" id="artSun" aria-hidden="true"></svg></div>
+  </section>
+
+  <section class="chap" data-name="05 · 暮紫">
+    <div class="txt">
+      <span class="kicker">CHAPTER 05</span>
+      <h2>暮紫</h2>
+      <p>天黑透之前的最后一抹紫。橙到紫是色相跨度最大的一段：RGB 直线插值会在中途走出一块泥棕，切到 HSL 绕色相环走，中间就是玫瑰红。</p>
+      <span class="swatch"><i></i><code></code></span>
+    </div>
+    <div class="art"><svg viewBox="0 0 400 400" id="artDusk" aria-hidden="true"></svg></div>
+  </section>
+
+  <section class="chap outro" data-name="尾声 · 回到夜里">
+    <div>
+      <h2>一圈走完，<span>又回到夜里</span></h2>
+      <div class="grid">
+        <div class="tip">
+          <span class="n">01</span>
+          <h3>只改三个变量</h3>
+          <p>底色、界面色、点缀色写成 <code>--bg</code> 等三个变量挂在根元素上，每帧只更新它们。比给每个元素各开一条 tween 省得多，也不会互相打架。</p>
+        </div>
+        <div class="tip">
+          <span class="n">02</span>
+          <h3>过渡区压在交界线上</h3>
+          <p>以「下一章顶边到达屏幕中线」为中心，前后各留半个过渡区，再套一条 <code>sine.inOut</code>。区间越窄越像换页，越宽越像日落。</p>
+        </div>
+        <div class="tip">
+          <span class="n">03</span>
+          <h3>擦洗还是越线</h3>
+          <p>擦洗完全跟手，停在半路就是半路的颜色；越线切换只在跨过中线那一刻放一段固定时长的动画，适合色差很大、不想让人看见中间色的页面。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+<script src="../lib/gsap.min.js"></script>
+<script src="../lib/ScrollTrigger.min.js"></script>
+<script src="../lib/ScrollToPlugin.min.js"></script>
+<script>
+  gsap.registerPlugin(ScrollTrigger, ScrollToPlugin);
+  ScrollTrigger.config({ ignoreMobileResize: true });
+
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const $ = id => document.getElementById(id);
+  const root = document.documentElement;
+  const NS = 'http://www.w3.org/2000/svg';
+
+  // ---------- 调色板：每章一组，唯一的配色来源 ----------
+  // bg 给整页插值；fg / muted / accent 写到章节自己身上，同时 fg / accent 也喂给全局导航
+  const PAL = [
+    { bg: '#0d1117', fg: '#e6edf3', muted: '#8b949e', accent: '#58e6a8' },
+    { bg: '#0b1f3a', fg: '#e3ecff', muted: '#8fa6c9', accent: '#5fa8ff' },
+    { bg: '#ebe5d9', fg: '#1d232b', muted: '#6b645a', accent: '#d2603a' },
+    { bg: '#11372b', fg: '#e3f5ea', muted: '#8db8a2', accent: '#58e6a8' },
+    { bg: '#f0a25c', fg: '#2a1408', muted: '#6e3a17', accent: '#8a1f1a' },
+    { bg: '#231337', fg: '#efe6ff', muted: '#a38dbd', accent: '#c9a2ff' },
+    { bg: '#0d1117', fg: '#e6edf3', muted: '#8b949e', accent: '#58e6a8' }
+  ];
+  const secs = gsap.utils.toArray('.chap');
+  secs.forEach((s, i) => {
+    const p = PAL[i];
+    s.style.setProperty('--fg', p.fg);
+    s.style.setProperty('--muted', p.muted);
+    s.style.setProperty('--accent', p.accent);
+    s.style.setProperty('--own', p.bg);
+    const code = s.querySelector('.swatch code');
+    if (code) code.textContent = 'bg ' + p.bg;
+  });
+  // 序章色卡：去掉首尾两个重复的深色
+  PAL.slice(1, -1).forEach(p => {
+    const i = document.createElement('i');
+    i.style.background = p.bg;
+    $('strip').appendChild(i);
+  });
+
+  // ---------- 五张插画：都用 currentColor，颜色跟着章节的 accent 走 ----------
+  const svg = (id, html) => ($(id).innerHTML = html);
+  // 深海：几条错开的波浪线，越往下越淡
+  let sea = '';
+  for (let k = 0; k < 7; k++) {
+    const y = 110 + k * 32;
+    sea += `<path class="wave" d="M-200 ${y} q50 -${18 - k} 100 0 t100 0 t100 0 t100 0 t100 0 t100 0 t100 0 t100 0" fill="none" stroke="currentColor" stroke-width="${3 - k * .3}" stroke-linecap="round" opacity="${1 - k * .12}"/>`;
+  }
+  // 波浪往左无限平移，两端用渐隐蒙版收住，看不到线头
+  svg('artSea', `<defs><linearGradient id="fadeX"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".25" stop-color="#fff"/><stop offset=".75" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient><mask id="seaMask"><rect width="400" height="400" fill="url(#fadeX)"/></mask></defs><g mask="url(#seaMask)"><g class="drift">${sea}</g></g><circle cx="300" cy="70" r="6" fill="currentColor" opacity=".7"/><circle cx="324" cy="44" r="3.5" fill="currentColor" opacity=".5"/><circle cx="312" cy="20" r="2" fill="currentColor" opacity=".35"/>`);
+  // 晨雾：太阳被几条半透明的雾带横穿
+  svg('artFog', `<circle class="float" cx="200" cy="180" r="96" fill="currentColor" opacity=".9"/>` +
+    [[60, 150, 220], [120, 196, 200], [30, 242, 260], [96, 288, 210]].map(([x, y, w], k) =>
+      `<rect class="band" x="${x}" y="${y}" width="${w}" height="16" rx="8" fill="#ebe5d9" opacity="${.92 - k * .08}"/>`).join(''));
+  // 苔原：三层叠起来的圆丘，最前面一层实心
+  svg('artMoss', `<path d="M10 300 C80 180 170 180 240 300Z" fill="currentColor" opacity=".35"/>
+    <path d="M140 300 C210 150 320 150 390 300Z" fill="currentColor" opacity=".55"/>
+    <path d="M60 300 C140 220 260 220 340 300Z" fill="currentColor"/>
+    <path class="leaf" d="M200 150 C170 120 175 80 200 60 C225 80 230 120 200 150Z M200 150 V200" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+    <line x1="10" y1="300" x2="390" y2="300" stroke="currentColor" stroke-width="2" opacity=".5"/>`);
+  // 落日：圆被 clipPath 切成越来越细的横条，像老海报上的夕阳
+  let bars = '';
+  for (let k = 0, y = 90; k < 9; k++) { const h = 26 - k * 2.6; bars += `<rect x="40" y="${y.toFixed(1)}" width="320" height="${h.toFixed(1)}"/>`; y += h + 4 + k * 1.2; }
+  svg('artSun', `<defs><clipPath id="sunClip"><circle cx="200" cy="200" r="130"/></clipPath></defs>
+    <g class="sink" clip-path="url(#sunClip)" fill="currentColor">${bars}</g>
+    <line x1="20" y1="336" x2="380" y2="336" stroke="currentColor" stroke-width="2"/>`);
+  // 暮紫：点阵从中心往外变小，最外面套一个环
+  let dots = '';
+  for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) {
+    const x = 40 + c * 40, y = 40 + r * 40, d = Math.hypot(x - 200, y - 200);
+    if (d > 165) continue;
+    dots += `<circle class="star" cx="${x}" cy="${y}" r="${(7 - d / 30).toFixed(1)}" fill="currentColor"/>`;
+  }
+  svg('artDusk', `<circle cx="200" cy="200" r="180" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".45"/>${dots}`);
+
+  // ---------- 右侧导航点 ----------
+  const dotWrap = $('dots');
+  const dotEls = secs.map((s, i) => {
+    const b = document.createElement('button');
+    b.setAttribute('aria-label', s.dataset.name);
+    b.addEventListener('click', () => go(i));
+    dotWrap.appendChild(b);
+    return b;
+  });
+
+  // ---------- 核心：按滚动位置算出当前底色 ----------
+  const cfg = { space: 'rgb', mode: reduce ? 'toggle' : 'scrub', zone: 0.6, dur: reduce ? 0 : 0.9 };
+  const ease = gsap.parseEase('sine.inOut');
+  // 当前正在显示的颜色。越线模式下 GSAP 直接 tween 这个对象，十六进制颜色它会自己拆成 rgba 来插
+  const state = { bg: PAL[0].bg, ui: PAL[0].fg, accent: PAL[0].accent };
+  const pick = p => ({ bg: p.bg, ui: p.fg, accent: p.accent });
+  let centers = [], lastIdx = -1, colorTween;
+
+  // RGB：gsap.utils.interpolate 直接按通道线性插，稳，但色相差得远时中间会发灰发脏。
+  // HSL：色相走色相环上较短的那半圈，饱和度和亮度各自线性插，中间色更鲜，代价是深浅差大时会路过意料之外的色相
+  function mixColor(a, b, t) {
+    // 两端直接返回原值：HSL 来回换算有取整误差，停稳时显示的色值应该和调色板一字不差
+    if (t <= 0) return a;
+    if (t >= 1) return b;
+    if (cfg.space === 'rgb') return gsap.utils.interpolate(a, b, t);
+    const [h1, s1, l1] = gsap.utils.splitColor(a, true), [h2, s2, l2] = gsap.utils.splitColor(b, true);
+    // 灰色没有可靠的色相，饱和度很低的一端直接借用另一端的色相，免得平白转一圈
+    const ha = s1 < 8 ? h2 : h1, hb = s2 < 8 ? h1 : h2;
+    const dh = ((hb - ha + 540) % 360) - 180;
+    return `hsl(${(ha + dh * t + 360) % 360},${s1 + (s2 - s1) * t}%,${l1 + (l2 - l1) * t}%)`;
+  }
+  const mix = (a, b, t) => ({ bg: mixColor(a.bg, b.bg, t), ui: mixColor(a.ui, b.ui, t), accent: mixColor(a.accent, b.accent, t) });
+
+  // 每条交界线对应的 scrollY：下一章顶边走到屏幕中线的那一刻。refresh 时重新量
+  function measure() {
+    const vh = innerHeight;
+    centers = secs.map(s => s.getBoundingClientRect().top + scrollY - vh / 2);
+  }
+
+  function paint() {
+    root.style.setProperty('--bg', state.bg);
+    root.style.setProperty('--ui', state.ui);
+    root.style.setProperty('--ui-accent', state.accent);
+    const [r, g, b] = gsap.utils.splitColor(state.bg);
+    $('hex').textContent = '#' + [r, g, b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
+  }
+
+  // 一个函数处理所有章节，而不是每章一个 ScrollTrigger 各管各的：
+  // 快速拖滚动条一下跨过好几章时，多个 onUpdate 的触发顺序不可靠，后跑的会把颜色改回去。
+  // 这里每次都从当前 scrollY 一次性算出结果，怎么跳都不会错
+  function render() {
+    const s = scrollY;
+    let idx = 0;
+    for (let i = 1; i < secs.length; i++) if (s >= centers[i]) idx = i;
+
+    if (idx !== lastIdx) {
+      lastIdx = idx;
+      dotEls.forEach((d, i) => d.classList.toggle('on', i === idx));
+      $('chapName').textContent = secs[idx].dataset.name;
+      // 越线模式：跨过中线那一刻才放一段固定时长的过渡，overwrite 让来回快速滚动时新动画直接接管旧的
+      if (cfg.mode === 'toggle') {
+        // 不直接 tween 颜色，而是 tween 一个 0→1 的进度，再用 mix 算颜色：这样两种模式共用一套插值，色彩空间开关对它也生效
+        const from = { ...state }, to = pick(PAL[idx]), k = { t: 0 };
+        if (colorTween) colorTween.kill();
+        colorTween = gsap.to(k, { t: 1, duration: cfg.dur, ease: 'power2.inOut', onUpdate: () => { Object.assign(state, mix(from, to, k.t)); paint(); } });
+        if (!cfg.dur) { Object.assign(state, to); paint(); }
+      }
+    }
+    if (cfg.mode !== 'scrub') return;
+
+    // 擦洗模式：找到 scrollY 落在哪个交界线的过渡区里，按区内进度插值；不在任何过渡区就是纯色
+    const half = innerHeight * cfg.zone / 2;
+    let from = PAL[0], to = PAL[0], t = 0;
+    for (let i = 1; i < secs.length; i++) {
+      const a = centers[i] - half, b = centers[i] + half;
+      if (s >= b) { from = to = PAL[i]; t = 0; }
+      else if (s > a) { from = PAL[i - 1]; to = PAL[i]; t = ease((s - a) / (b - a)); break; }
+      else break;
+    }
+    Object.assign(state, mix(pick(from), pick(to), t));
+    paint();
+  }
+
+  // 一个覆盖整页的 ScrollTrigger 只当「滚动 + 尺寸变化」的统一入口用
+  ScrollTrigger.create({ start: 0, end: 'max', onUpdate: render, onRefresh: () => { measure(); render(); } });
+
+  // ---------- 章节内的点缀动画 ----------
+  if (!reduce) {
+    secs.slice(1, -1).forEach(s => {
+      // 标题和正文在章节进到屏幕下三分之一时升起；往回滚时倒放，下次进来还能再看一次
+      gsap.from(s.querySelectorAll('.kicker, h2, p, .swatch'), {
+        y: 36, opacity: 0, duration: .9, ease: 'power3.out', stagger: .08,
+        scrollTrigger: { trigger: s, start: 'top 65%', toggleActions: 'play none none reverse' }
+      });
+      // 插画慢于文字的视差：同一屏里两层速度不同，才有纵深
+      gsap.fromTo(s.querySelector('.art'), { y: 70, rotation: -4 }, {
+        y: -70, rotation: 4, ease: 'none',
+        scrollTrigger: { trigger: s, start: 'top bottom', end: 'bottom top', scrub: .6 }
+      });
+    });
+    gsap.from('.outro .tip', {
+      y: 30, opacity: 0, duration: .8, ease: 'power3.out', stagger: .1,
+      scrollTrigger: { trigger: '.outro', start: 'top 60%', toggleActions: 'play none none reverse' }
+    });
+    // 待机小动作：幅度都很小，只是让画面不死板
+    gsap.to('.drift', { x: -200, duration: 6, ease: 'none', repeat: -1 });
+    gsap.to('.float', { y: -10, duration: 3, ease: 'sine.inOut', yoyo: true, repeat: -1 });
+    gsap.to('.band', { x: i => (i % 2 ? 18 : -18), duration: 4, ease: 'sine.inOut', yoyo: true, repeat: -1, stagger: .4 });
+    gsap.to('.leaf', { rotation: 6, transformOrigin: '50% 100%', duration: 2.4, ease: 'sine.inOut', yoyo: true, repeat: -1 });
+    gsap.to('.star', { opacity: .35, duration: 1.6, ease: 'sine.inOut', stagger: { each: .05, from: 'center', repeat: -1, yoyo: true } });
+    gsap.fromTo('.sink', { y: -30 }, { y: 50, ease: 'none', scrollTrigger: { trigger: '#artSun', start: 'top bottom', end: 'bottom top', scrub: true } });
+
+    // 入场
+    gsap.timeline({ defaults: { ease: 'power3.out' } })
+      .from('.eyebrow', { y: 16, opacity: 0, duration: .8 }, .1)
+      .from('.intro h1 .line', { yPercent: 60, opacity: 0, duration: 1, stagger: .12 }, .2)
+      .from('.intro .sub', { y: 16, opacity: 0, duration: .8 }, .5)
+      .from('#strip i', { scaleX: 0, opacity: 0, duration: .6, stagger: .07, ease: 'back.out(2)' }, .7)
+      .from('#hint', { opacity: 0, duration: .6 }, 1.1);
+    gsap.fromTo('#hint i', { scaleY: 0 }, { scaleY: 1, duration: 1.2, ease: 'power2.inOut', repeat: -1, repeatDelay: .3 });
+  }
+
+  // ---------- 跳转与巡游 ----------
+  // 停在章节正中：内容居中、过渡区早已走完，看到的是这一章的纯色
+  const spot = i => {
+    const s = secs[i];
+    return Math.max(0, s.offsetTop + (s.offsetHeight - innerHeight) / 2);
+  };
+  let tour;
+  function go(i) {
+    if (tour) tour.kill();
+    gsap.to(window, { scrollTo: { y: spot(i), autoKill: true }, duration: reduce ? 0 : 1.2, ease: 'power2.inOut', overwrite: true });
+  }
+  $('play').addEventListener('click', () => {
+    if (tour) tour.kill();
+    // 每章之间停一下，让纯色站稳；autoKill 让用户一伸手滚动就把控制权还回去
+    tour = gsap.timeline();
+    tour.to(window, { scrollTo: { y: 0, autoKill: true }, duration: scrollY > 4 ? .8 : 0, ease: 'power2.inOut' });
+    for (let i = 1; i < secs.length; i++) {
+      tour.to(window, { scrollTo: { y: spot(i), autoKill: true }, duration: 1.5, ease: 'power2.inOut' }, '+=.7');
+    }
+  });
+
+  // ---------- 控件 ----------
+  function setMode(m) {
+    cfg.mode = m;
+    document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
+    $('zoneCtrl').hidden = m !== 'scrub';
+    $('durCtrl').hidden = m !== 'toggle';
+    if (colorTween) colorTween.kill();
+    // 切到越线模式时让当前章节重新「越一次线」，马上就能看到切换动画的手感
+    lastIdx = -1;
+    if (m === 'toggle') { Object.assign(state, pick(PAL[0])); paint(); }
+    render();
+  }
+  document.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
+  document.querySelectorAll('[data-space]').forEach(b => b.addEventListener('click', () => {
+    cfg.space = b.dataset.space;
+    document.querySelectorAll('[data-space]').forEach(x => x.classList.toggle('on', x === b));
+    render();
+  }));
+  $('zone').addEventListener('input', e => {
+    cfg.zone = e.target.value / 100;
+    $('zVal').textContent = e.target.value + 'vh';
+    render();
+  });
+  $('dur').addEventListener('input', e => {
+    cfg.dur = +e.target.value;
+    $('dVal').textContent = cfg.dur.toFixed(1) + 's';
+  });
+  $('toggle').addEventListener('click', e => {
+    const open = $('panel').classList.toggle('open');
+    e.currentTarget.classList.toggle('on', open);
+    e.currentTarget.setAttribute('aria-expanded', open);
+  });
+
+  if (reduce) {
+    // 减少动态：不做渐变，跨章时底色直接换掉；没有入场、视差和待机动画
+    setMode('toggle');
+    $('dur').disabled = true;
+    $('dVal').textContent = '即时';
+    document.querySelector('.seg button[data-mode="scrub"]').disabled = true;
+    $('play').textContent = '▶ 逐章跳转';
+  }
+  measure();
+  render();
+</script>
+
+<!-- 图鉴浮条：返回图鉴 + 把这个 demo 的链接和提示词复制给 AI Agent -->
+<div id="galleryBar">
+  <a href="/" class="gb">← 图鉴</a>
+  <button class="gb" id="gbCopy">⧉ 复制给 AI</button>
+</div>
+<style>
+  #galleryBar {
+    position: fixed; left: 16px; bottom: 16px; z-index: 9999;
+    display: flex; gap: 8px; font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+  }
+  #galleryBar .gb {
+    font-size: 12px; line-height: 1; padding: 8px 12px; border-radius: 8px; cursor: pointer;
+    color: #8b949e; background: rgba(22,27,34,.92); border: 1px solid #30363d;
+    text-decoration: none; backdrop-filter: blur(8px); font-family: inherit;
+    transition: color .16s, border-color .16s;
+  }
+  #galleryBar .gb:hover { color: #58e6a8; border-color: #58e6a8; }
+  #galleryBar .gb.done { color: #58e6a8; border-color: rgba(88,230,168,.6); }
+  @media (max-width: 520px) { #galleryBar { left: 10px; bottom: 10px; } }
+</style>
+<script>
+  (function () {
+    var DEMO = 'scroll-bg-color', TITLE = '段落换背景色';
+    var origin = location.protocol.startsWith('http') ? location.origin : 'https://gsap.leolee0812.site';
+    var text = '参考这个页面：' + origin + '/demos/' + DEMO + '.html\n' +
+      '它用 GSAP 3.13 实现了「' + TITLE + '」，源码里有完整可运行的实现和中文注释。\n' +
+      '请先读取这个链接，弄清它的实现方式（用到哪些插件、时间轴怎么排、缓动怎么选），\n' +
+      '然后把同样的效果复刻到我的项目里：沿用我现有的页面结构和配色，保持一致的节奏和手感。';
+    var btn = document.getElementById('gbCopy');
+    btn.addEventListener('click', function () {
+      var done = function () {
+        btn.textContent = '✓ 已复制，粘给你的 Agent';
+        btn.classList.add('done');
+        clearTimeout(btn._t);
+        btn._t = setTimeout(function () {
+          btn.textContent = '⧉ 复制给 AI';
+          btn.classList.remove('done');
+        }, 2200);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, done);
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+        done();
+      }
+    });
+  })();
+</script>
+</body>
+</html>
