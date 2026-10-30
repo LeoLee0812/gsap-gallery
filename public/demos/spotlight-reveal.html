@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1117'/%3E%3Cpath d='M9 22c3-9 8-13 14-12' stroke='%2358e6a8' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='23' cy='10' r='3' fill='%233b82f6'/%3E%3C/svg%3E">
+<title>聚光灯</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3;
+    font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+    min-height: 100vh; padding: 40px 20px 80px;
+    display: flex; flex-direction: column; align-items: center; gap: 22px;
+    overflow-x: hidden;
+  }
+  h1 { font-size: 22px; font-weight: 700; }
+  .sub { font-size: 14px; opacity: .55; margin-top: -12px; text-align: center; line-height: 1.6; }
+
+  /* ---------- 舞台 ----------
+     三层叠在一起：暗层（整幅场景压到很暗）、亮层（同一幅场景原色，用径向遮罩只露出光圈里那一块）、
+     最上面是藏起来的字和读数。两层场景是同一份 DOM 克隆出来的，排版永远严丝合缝 */
+  .stage {
+    position: relative; width: 100%; max-width: 960px; aspect-ratio: 16 / 9.4;
+    background: #07090c; border: 1px solid #30363d; border-radius: 16px; overflow: hidden;
+    cursor: none; touch-action: none;
+    user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+    --x: 50%; --y: 50%; --r0: 0px; --r1: 0px; --r2: 0px;
+  }
+  .layer { position: absolute; inset: 0; pointer-events: none; }
+  .dim { filter: brightness(.21) saturate(.35); }
+  /* 遮罩分三段：中心实打实全亮，往外先掉到一半再淡到零，光圈边缘才有真实灯光那种「晕」 */
+  .lit {
+    -webkit-mask-image: radial-gradient(circle at var(--x) var(--y), #000 var(--r0), rgba(0,0,0,.45) var(--r1), transparent var(--r2));
+            mask-image: radial-gradient(circle at var(--x) var(--y), #000 var(--r0), rgba(0,0,0,.45) var(--r1), transparent var(--r2));
+  }
+  /* 一层很淡的暖光叠在最上面：灯打在墙上不是纯白，带一点钨丝灯的黄 */
+  .warm {
+    background: radial-gradient(circle at var(--x) var(--y), rgba(255,226,170,.13), rgba(255,226,170,.04) var(--r1), transparent var(--r2));
+    mix-blend-mode: screen;
+  }
+  #dust { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+  /* ---------- 场景：一面夜间展厅的墙 ---------- */
+  .scene {
+    position: absolute; inset: 0; padding: 5.5% 6% 6%;
+    display: grid; grid-template-rows: auto 1fr; gap: 5%;
+    background:
+      repeating-linear-gradient(90deg, rgba(255,255,255,.018) 0 2px, transparent 2px 46px),
+      linear-gradient(180deg, #232a34, #181d25 70%, #12161c);
+  }
+  .head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
+  .eyebrow { font-size: 11px; letter-spacing: 3px; color: #58e6a8; font-family: ui-monospace, Menlo, monospace; }
+  .big { font-size: clamp(34px, 6.4vw, 66px); font-weight: 800; letter-spacing: 4px; line-height: 1.1; margin-top: 8px; }
+  .big span { color: #58e6a8; }
+  .lede { font-size: 13px; color: #8b949e; line-height: 1.7; max-width: 250px; text-align: right; }
+
+  .wall { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4.5%; min-height: 0; }
+  .art { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+  .frame {
+    position: relative; flex: 1; min-height: 0; border-radius: 3px; overflow: hidden;
+    border: 6px solid #2b2218; outline: 1px solid #4a3a28; outline-offset: -1px;
+    box-shadow: 0 18px 30px rgba(0,0,0,.45), inset 0 0 0 1px rgba(0,0,0,.4);
+  }
+  .card { font-size: 11px; color: #8b949e; line-height: 1.5; }
+  .card b { display: block; font-size: 13px; color: #e6edf3; font-weight: 600; }
+
+  /* 三幅画全用 CSS 渐变现画，不依赖任何图片 */
+  .p1 { background: linear-gradient(180deg, #0f2a4a 0%, #1d5a7a 55%, #e9b872 100%); }
+  .p1::before {
+    content: ''; position: absolute; width: 22%; aspect-ratio: 1; right: 18%; top: 16%; border-radius: 50%;
+    background: radial-gradient(circle at 40% 40%, #fff7e0, #f2d39a 70%); box-shadow: 0 0 30px rgba(255,230,170,.6);
+  }
+  /* 山脊用 clip-path 折线剪出来，前后两层深浅不同，才有远近 */
+  .p1::after {
+    content: ''; position: absolute; inset: 44% 0 0;
+    background: linear-gradient(180deg, #16384c, #0a1a24);
+    clip-path: polygon(0 58%, 12% 36%, 24% 50%, 40% 12%, 55% 44%, 68% 28%, 84% 52%, 100% 30%, 100% 100%, 0 100%);
+  }
+  .p2 { background: #e8e1d3; }
+  .p2 i { position: absolute; width: 46%; aspect-ratio: 1; border-radius: 50%; mix-blend-mode: multiply; }
+  .p2 i:nth-child(1) { background: #f05d4f; left: 14%; top: 18%; }
+  .p2 i:nth-child(2) { background: #3b82f6; left: 38%; top: 24%; }
+  .p2 i:nth-child(3) { background: #f2c94c; left: 26%; top: 44%; }
+  .p3 {
+    background:
+      repeating-radial-gradient(circle at 0% 100%, transparent 0 14px, rgba(88,230,168,.85) 14px 17px),
+      repeating-radial-gradient(circle at 100% 100%, transparent 0 20px, rgba(59,130,246,.7) 20px 22px),
+      #0e2b2a;
+  }
+
+  /* ---------- 藏起来的字 ----------
+     不放进遮罩层：每个字的透明度按它离光心多远逐帧算，找到之后就能单独常亮 */
+  .secrets { position: absolute; inset: 0; pointer-events: none; }
+  .secret {
+    position: absolute; width: 56px; height: 56px; margin: -28px 0 0 -28px;
+    display: grid; place-items: center; opacity: 0;
+  }
+  .secret .g {
+    font-size: 26px; font-weight: 700; color: #58e6a8;
+    text-shadow: 0 0 12px rgba(88,230,168,.8), 0 0 2px #58e6a8;
+  }
+  .secret svg { position: absolute; inset: 0; overflow: visible; transform: rotate(-90deg); }
+  .secret circle { fill: none; stroke: #58e6a8; stroke-width: 2; stroke-linecap: round; stroke-dasharray: 126 126; stroke-dashoffset: 126; }
+  .secret.found .g { color: #0d1117; text-shadow: none; }
+  .secret .dot { position: absolute; inset: 9px; border-radius: 50%; background: #58e6a8; box-shadow: 0 0 22px rgba(88,230,168,.7); transform: scale(0); }
+
+  /* 读数：右上角一排空格，找到哪个字就填进哪一格，凑齐是一句话 */
+  .hud {
+    position: absolute; right: 14px; top: 14px; display: flex; align-items: center; gap: 6px;
+    background: rgba(13,17,23,.72); border: 1px solid #30363d; border-radius: 10px;
+    padding: 6px 10px; font-size: 11px; color: #6e7681; backdrop-filter: blur(6px); pointer-events: none;
+  }
+  .hud .slot {
+    width: 22px; height: 22px; border-radius: 6px; border: 1px dashed #30363d;
+    display: grid; place-items: center; font-size: 13px; font-weight: 700; color: #58e6a8;
+  }
+  .hud .slot.on { border: 1px solid rgba(88,230,168,.55); background: rgba(88,230,168,.1); }
+
+  /* 光标本身也是一枚小光点：舞台里隐藏系统光标，不然箭头会把光圈中心挡住 */
+  .aim {
+    position: absolute; left: 0; top: 0; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%;
+    background: #fff6dc; box-shadow: 0 0 10px #fff1c8; pointer-events: none; opacity: 0;
+  }
+
+  .tip { text-align: center; font-size: 12px; color: #6e7681; letter-spacing: .5px; min-height: 18px; margin-top: -8px; }
+
+  .panel {
+    display: flex; gap: 22px 28px; flex-wrap: wrap; justify-content: center; align-items: flex-end;
+    background: #161b22; border: 1px solid #30363d; border-radius: 14px;
+    padding: 16px 22px; max-width: 960px; width: 100%;
+  }
+  .ctrl { display: flex; flex-direction: column; gap: 7px; }
+  .ctrl label { font-size: 12px; opacity: .6; }
+  input[type=range] { width: 160px; accent-color: #58e6a8; }
+  .val { font-size: 12px; color: #58e6a8; font-family: ui-monospace, Menlo, monospace; }
+  .btns { display: flex; gap: 10px; }
+  .replay {
+    background: #58e6a8; color: #0d1117; border: 0; border-radius: 24px;
+    padding: 10px 24px; font-size: 14px; font-weight: 600; cursor: pointer;
+    font-family: inherit; transition: transform .16s, box-shadow .16s;
+  }
+  .replay:hover { box-shadow: 0 0 22px rgba(88,230,168,.4); }
+  .replay:active { transform: scale(.96); }
+  .ghost-btn {
+    background: none; color: #8b949e; border: 1px solid #30363d; border-radius: 24px;
+    padding: 9px 20px; font-size: 14px; cursor: pointer; font-family: inherit;
+    transition: color .16s, border-color .16s; min-width: 96px;
+  }
+  .ghost-btn:hover { color: #e6edf3; border-color: #8b949e; }
+
+  .note { font-size: 12px; color: #6e7681; text-align: center; max-width: 600px; line-height: 1.7; }
+  .note code { color: #58e6a8; font-family: ui-monospace, Menlo, monospace; }
+
+  @media (max-width: 600px) {
+    body { padding: 28px 14px 72px; gap: 18px; }
+    .stage { aspect-ratio: 3 / 4.1; }
+    .scene { padding: 16% 6% 7%; gap: 4%; }
+    .head { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .big { font-size: 40px; letter-spacing: 3px; }
+    .lede { text-align: left; max-width: none; font-size: 12px; }
+    .wall { grid-template-columns: 1fr 1fr; grid-template-rows: 1.15fr 1fr; gap: 5%; }
+    .art:first-child { grid-column: 1 / -1; }
+    .art { gap: 6px; }
+    .frame { border-width: 4px; }
+    .card { font-size: 10px; }
+    .card b { font-size: 12px; }
+    .hud { right: 10px; top: 10px; padding: 5px 8px; gap: 4px; }
+    .hud .slot { width: 20px; height: 20px; font-size: 12px; }
+    .panel { padding: 14px 16px; gap: 16px 20px; justify-content: flex-start; }
+    input[type=range] { width: 140px; }
+  }
+</style>
+</head>
+<body>
+  <h1>聚光灯</h1>
+  <p class="sub">展厅关了灯，只有光圈照到的地方才看得清：移动光标或手指去照，按住能聚焦；墙上还藏着五个字，在光下停一会儿就能捡到</p>
+
+  <div class="stage" id="stage" aria-label="一面暗着的展厅墙，光圈跟随指针照亮局部">
+    <div class="layer dim" id="dimLayer"></div>
+    <div class="layer lit" id="litLayer">
+      <div class="scene" id="scene">
+        <div class="head">
+          <div>
+            <div class="eyebrow">NO.84 · NIGHT GALLERY</div>
+            <div class="big">暗处<span>有光</span></div>
+          </div>
+          <p class="lede">夜间展厅只留一盏追光灯。墙上三幅画，画框之间还藏着一句话。</p>
+        </div>
+        <div class="wall">
+          <div class="art"><div class="frame p1"></div><div class="card"><b>月出 · 海湾</b>布面油彩，1987</div></div>
+          <div class="art"><div class="frame p2"><i></i><i></i><i></i></div><div class="card"><b>三原色</b>丝网版画，2004</div></div>
+          <div class="art"><div class="frame p3"></div><div class="card"><b>潮汐纹</b>数码微喷，2019</div></div>
+        </div>
+      </div>
+      <canvas id="dust"></canvas>
+    </div>
+    <div class="layer warm"></div>
+    <div class="secrets" id="secrets"></div>
+    <div class="aim" id="aim"></div>
+    <div class="hud" id="hud">已找到</div>
+  </div>
+  <p class="tip" id="tip">没人操作时，灯会自己在墙上慢慢巡一圈</p>
+
+  <div class="panel">
+    <div class="ctrl">
+      <label>光圈半径 <span class="val" id="rVal">150 px</span></label>
+      <input type="range" id="radius" min="70" max="280" step="1" value="150">
+    </div>
+    <div class="ctrl">
+      <label>边缘柔和 <span class="val" id="sVal">60%</span></label>
+      <input type="range" id="soft" min="5" max="95" step="1" value="60">
+    </div>
+    <div class="btns">
+      <button class="ghost-btn" id="lights">💡 开灯</button>
+      <button class="replay" id="replay">▶ 重新藏</button>
+    </div>
+  </div>
+
+  <p class="note">
+    同一幅场景放两份：底下一份压暗，上面一份原色，再用 <code>mask-image: radial-gradient(...)</code> 只露出光圈。
+    光心坐标交给 <code>gsap.quickTo</code> 追着指针跑，每帧写回 CSS 变量；开灯、聚焦、通电闪烁都只是在补间几个数字，遮罩跟着变。
+  </p>
+
+<script src="../lib/gsap.min.js"></script>
+<script>
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const $ = id => document.getElementById(id);
+  const stage = $('stage'), aim = $('aim'), tip = $('tip');
+
+  // 暗层直接克隆亮层里的场景：只维护一份内容，两层不会对不齐
+  $('dimLayer').appendChild($('scene').cloneNode(true)).removeAttribute('id');
+
+  // ---------- 灯的状态 ----------
+  // 所有视觉都从这几个数推出来，GSAP 只负责补间它们：
+  // x/y 光心，r 滑块给的半径，soft 柔边比例，focus 按住时收紧，power 通电亮度，on 开灯（光圈撑满整墙）
+  const L = { x: 0, y: 0, r: 150, soft: .6, focus: 1, power: 0, on: 0 };
+  let W = 0, H = 0, diag = 0;
+  let mode = 'auto', idleT = 0, autoT = 0, idleTimer;
+
+  // 跟随带一点拖拽感：灯是有分量的，不该像光标一样瞬移。reduce 时直接贴手
+  const moveX = gsap.quickTo(L, 'x', { duration: reduce ? 0.01 : .5, ease: 'power3' });
+  const moveY = gsap.quickTo(L, 'y', { duration: reduce ? 0.01 : .5, ease: 'power3' });
+  const aimX = gsap.quickSetter(aim, 'x', 'px'), aimY = gsap.quickSetter(aim, 'y', 'px');
+
+  function measure() {
+    W = stage.clientWidth; H = stage.clientHeight; diag = Math.hypot(W, H);
+    layoutSecrets();
+    sizeDust();
+  }
+
+  // ---------- 藏起来的字 ----------
+  const WORDS = ['光', '从', '不', '缺', '席'];
+  const secretsEl = $('secrets'), hud = $('hud');
+  hud.insertAdjacentHTML('beforeend', WORDS.map(() => '<span class="slot"></span>').join(''));
+  const slots = [...hud.querySelectorAll('.slot')];
+  const S = WORDS.map((w, i) => {
+    const el = document.createElement('div');
+    el.className = 'secret';
+    el.innerHTML = `<span class="dot"></span><svg viewBox="0 0 56 56"><circle cx="28" cy="28" r="20"/></svg><span class="g">${w}</span>`;
+    secretsEl.appendChild(el);
+    return { w, i, el, ring: el.querySelector('circle'), dot: el.querySelector('.dot'), g: el.querySelector('.g'), u: 0, v: 0, px: 0, py: 0, hold: 0, found: false };
+  });
+  let foundCount = 0;
+
+  // 位置用比例存，换屏幕尺寸不用重新藏。
+  // 随机撒点但彼此至少隔开一段距离，避开右上角读数，也不贴边，免得光圈照不全
+  function hide() {
+    const pts = [];
+    for (const s of S) {
+      let u, v, tries = 0;
+      do {
+        u = gsap.utils.random(.1, .9); v = gsap.utils.random(.2, .88); tries++;
+      } while (tries < 200 && (pts.some(p => Math.hypot((p.u - u) * W, (p.v - v) * H) < Math.min(W, H) * .3) || (u > .62 && v < .26)));
+      pts.push({ u, v });
+      Object.assign(s, { u, v, hold: 0, found: false });
+      s.el.classList.remove('found');
+      gsap.set(s.dot, { scale: 0 });
+      gsap.set(s.g, { scale: 1 });
+      s.ring.style.strokeDashoffset = 126;
+    }
+    slots.forEach(el => { el.textContent = ''; el.classList.remove('on'); });
+    foundCount = 0;
+    layoutSecrets();
+  }
+  function layoutSecrets() {
+    S.forEach(s => { s.px = s.u * W; s.py = s.v * H; s.el.style.left = s.px + 'px'; s.el.style.top = s.py + 'px'; });
+  }
+
+  // 在光心附近停够 0.55 秒才算找到：太短会扫一下就全捡完，太长又让人觉得卡
+  const HOLD = .55;
+  function find(s) {
+    s.found = true; foundCount++;
+    s.el.classList.add('found');
+    const slot = slots[s.i];
+    slot.textContent = s.w; slot.classList.add('on');
+    if (!reduce) {
+      gsap.timeline()
+        .to(s.dot, { scale: 1, duration: .45, ease: 'back.out(2.2)' })
+        .fromTo(s.g, { scale: 1.6 }, { scale: 1, duration: .5, ease: 'elastic.out(1, .5)' }, 0)
+        .fromTo(s.ring, { strokeDashoffset: 0, scale: 1, opacity: 1, transformOrigin: '50% 50%' },
+          { scale: 1.9, opacity: 0, duration: .6, ease: 'power2.out' }, 0);
+      gsap.fromTo(slot, { scale: 1.5 }, { scale: 1, duration: .45, ease: 'back.out(3)' });
+    }
+    tip.textContent = foundCount < WORDS.length
+      ? `捡到「${s.w}」，还差 ${WORDS.length - foundCount} 个`
+      : '五个字都找到了：光从不缺席';
+    if (foundCount === WORDS.length) celebrate();
+  }
+
+  // 凑齐以后把灯全打开，读数里的字挨个跳一下，过一会儿再关回去
+  function celebrate() {
+    if (reduce) { setLights(true); return; }
+    gsap.timeline({ delay: .35 })
+      .call(() => setLights(true))
+      .to(slots, { y: -5, duration: .22, ease: 'power2.out', stagger: .08, yoyo: true, repeat: 1 }, .4)
+      .call(() => setLights(false), null, 3.2);
+  }
+
+  // ---------- 浮尘 ----------
+  // 光柱里飘着的灰：画在亮层里，所以只有被照到的那几粒看得见，暗处的自然隐身
+  const dust = $('dust'), ctx = dust.getContext('2d');
+  const motes = Array.from({ length: 70 }, () => ({
+    u: Math.random(), v: Math.random(), s: gsap.utils.random(.6, 1.8), a: gsap.utils.random(.15, .55),
+    vx: gsap.utils.random(-.006, .006), vy: gsap.utils.random(-.012, -.002), ph: Math.random() * 6.28
+  }));
+  let dpr = 1;
+  function sizeDust() {
+    dpr = Math.min(2, devicePixelRatio || 1);
+    dust.width = W * dpr; dust.height = H * dpr;
+  }
+  function drawDust(t, dt) {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#fff3d6';
+    for (const m of motes) {
+      m.u = (m.u + m.vx * dt + 1) % 1;
+      m.v = (m.v + m.vy * dt + 1) % 1;
+      ctx.globalAlpha = m.a * (.6 + .4 * Math.sin(t * 1.3 + m.ph));
+      ctx.beginPath();
+      ctx.arc(m.u * W + Math.sin(t * .7 + m.ph) * 6, m.v * H, m.s, 0, 6.283);
+      ctx.fill();
+    }
+  }
+
+  // ---------- 每帧：把数字写回遮罩，顺便判断哪个字被照到了 ----------
+  const smooth = (a, b, x) => { const t = gsap.utils.clamp(0, 1, (x - a) / (b - a)); return t * t * (3 - 2 * t); };
+
+  gsap.ticker.add((time, dms) => {
+    const dt = Math.min(dms, 50) / 1000;
+
+    // 没人操作时灯沿一条李萨如曲线慢慢巡场：两个方向用互质的频率，轨迹很久才重复，不显得机械
+    if (mode === 'auto' && !reduce) {
+      autoT += dt;
+      moveX(W * (.5 + .34 * Math.sin(autoT * .41)));
+      moveY(H * (.52 + .26 * Math.sin(autoT * .67 + .9)));
+    }
+
+    // 开灯时半径一路涨到对角线那么大，整面墙就被「照满」了；power 管通电那一下的闪烁
+    const base = L.r * L.focus * L.power;
+    const R = base + (diag * 1.05 - base) * L.on;
+    const r0 = R * (1 - L.soft), r1 = r0 + (R - r0) * .5;
+    stage.style.setProperty('--x', L.x.toFixed(1) + 'px');
+    stage.style.setProperty('--y', L.y.toFixed(1) + 'px');
+    stage.style.setProperty('--r0', r0.toFixed(1) + 'px');
+    stage.style.setProperty('--r1', r1.toFixed(1) + 'px');
+    stage.style.setProperty('--r2', R.toFixed(1) + 'px');
+
+    for (const s of S) {
+      const d = Math.hypot(s.px - L.x, s.py - L.y);
+      if (s.found) { s.el.style.opacity = 1; continue; }
+      // 字的亮度跟遮罩用同一条衰减，看起来就像是同一盏灯照出来的
+      s.el.style.opacity = (1 - smooth(r0 * .8, R, d)).toFixed(3);
+      // 只认人手在照的那一下，巡场和开灯都不算数，不然放着不管字就自己被捡完了
+      const near = mode === 'user' && L.on < .05 && d < Math.max(34, R * .3);
+      s.hold = near ? s.hold + dt : Math.max(0, s.hold - dt * 2);
+      s.ring.style.strokeDashoffset = (126 * (1 - Math.min(1, s.hold / HOLD))).toFixed(1);
+      if (s.hold >= HOLD) find(s);
+    }
+
+    if (!reduce) drawDust(time, dt);
+  });
+
+  // ---------- 指针 ----------
+  function local(e) {
+    const b = stage.getBoundingClientRect();
+    return { x: e.clientX - b.left, y: e.clientY - b.top };
+  }
+  function takeOver(e) {
+    clearTimeout(idleTimer);
+    if (mode !== 'user') {
+      mode = 'user';
+      gsap.to(aim, { opacity: 1, duration: .2, overwrite: 'auto' });
+      tip.textContent = '按住能把光收紧聚焦；墙上发绿光的字，照着它停一会儿';
+    }
+    const p = local(e);
+    moveX(p.x); moveY(p.y);
+    aimX(p.x); aimY(p.y);
+  }
+  // 人一离开，等一小会儿再把灯交还给巡场，免得手刚挪开灯就自己跑了
+  function release(delay) {
+    clearTimeout(idleTimer);
+    gsap.to(L, { focus: 1, duration: .6, ease: 'elastic.out(1, .6)', overwrite: 'auto' });
+    gsap.to(aim, { opacity: 0, duration: .3, overwrite: 'auto' });
+    idleTimer = setTimeout(() => { mode = 'auto'; autoT = Math.asin(gsap.utils.clamp(-1, 1, (L.x / W - .5) / .34)) / .41; }, delay);
+  }
+
+  stage.addEventListener('pointermove', e => {
+    // 触屏只在按住时才算在照；鼠标悬停就算
+    if (e.pointerType !== 'mouse' && !e.buttons) return;
+    takeOver(e);
+  });
+  stage.addEventListener('pointerdown', e => {
+    stage.setPointerCapture(e.pointerId);
+    takeOver(e);
+    // 聚焦：光圈收到七成，像拧了一下灯头；power3.out 收得干脆
+    gsap.to(L, { focus: .68, duration: reduce ? 0 : .35, ease: 'power3.out', overwrite: 'auto' });
+  });
+  stage.addEventListener('pointerup', e => {
+    gsap.to(L, { focus: 1, duration: reduce ? 0 : .7, ease: 'elastic.out(1, .55)', overwrite: 'auto' });
+    if (e.pointerType !== 'mouse') release(2400);
+  });
+  stage.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') release(1400); });
+  stage.addEventListener('pointercancel', () => release(2400));
+
+  // ---------- 控件 ----------
+  $('radius').addEventListener('input', e => {
+    gsap.to(L, { r: +e.target.value, duration: reduce ? 0 : .3, ease: 'power2.out', overwrite: 'auto' });
+    $('rVal').textContent = e.target.value + ' px';
+  });
+  $('soft').addEventListener('input', e => {
+    L.soft = e.target.value / 100;
+    $('sVal').textContent = e.target.value + '%';
+  });
+
+  const lightsBtn = $('lights');
+  let lit = false;
+  // 开灯用 inOut：灯光是「漫」开的；关灯快一点收回，像开关一拨
+  function setLights(on) {
+    lit = on;
+    lightsBtn.textContent = on ? '🌙 关灯' : '💡 开灯';
+    gsap.to(L, { on: on ? 1 : 0, duration: reduce ? 0 : on ? 1.2 : .8, ease: on ? 'power2.inOut' : 'power3.inOut', overwrite: 'auto' });
+  }
+  lightsBtn.addEventListener('click', () => setLights(!lit));
+
+  // ---------- 开场：灯丝通电时闪两下才稳住，然后从左侧扫进来 ----------
+  let intro;
+  function play() {
+    if (intro) intro.kill();
+    hide();
+    if (lit) setLights(false);
+    mode = 'auto';
+    if (reduce) {
+      // 减少动态：不闪、不巡场，灯就静静停在墙中间，指针照样能控制
+      Object.assign(L, { x: W * .5, y: H * .55, power: 1, on: 0 });
+      mode = 'still';
+      tip.textContent = '已开启「减少动态」：灯不巡场，移动指针照样能照';
+      return;
+    }
+    autoT = -Math.PI / 2 / .41; // 让巡场轨迹从左边起步
+    gsap.set(L, { x: W * .16, y: H * .5, power: 0 });
+    intro = gsap.timeline()
+      .to(L, { keyframes: [
+        { power: .55, duration: .06 }, { power: .05, duration: .09 },
+        { power: .8, duration: .07 }, { power: .25, duration: .12 },
+        { power: 1, duration: .6, ease: 'power2.out' }
+      ], ease: 'none' }, .25)
+      .fromTo(secretsEl, { opacity: 0 }, { opacity: 1, duration: .6 }, .3)
+      .fromTo(hud, { opacity: 0, y: -6 }, { opacity: 1, y: 0, duration: .5, ease: 'power2.out' }, .7);
+    tip.textContent = '没人操作时，灯会自己在墙上慢慢巡一圈';
+  }
+  $('replay').addEventListener('click', play);
+
+  // reduce 模式下 mode 是 still：既不巡场，也要能被指针接管，所以 takeOver 照常切成 user
+  new ResizeObserver(() => { measure(); if (mode === 'still') { L.x = W * .5; L.y = H * .55; } }).observe(stage);
+  measure();
+  play();
+</script>
+
+<!-- 图鉴浮条：返回图鉴 + 把这个 demo 的链接和提示词复制给 AI Agent -->
+<div id="galleryBar">
+  <a href="/" class="gb">← 图鉴</a>
+  <button class="gb" id="gbCopy">⧉ 复制给 AI</button>
+</div>
+<style>
+  #galleryBar {
+    position: fixed; left: 16px; bottom: 16px; z-index: 9999;
+    display: flex; gap: 8px; font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+  }
+  #galleryBar .gb {
+    font-size: 12px; line-height: 1; padding: 8px 12px; border-radius: 8px; cursor: pointer;
+    color: #8b949e; background: rgba(22,27,34,.92); border: 1px solid #30363d;
+    text-decoration: none; backdrop-filter: blur(8px); font-family: inherit;
+    transition: color .16s, border-color .16s;
+  }
+  #galleryBar .gb:hover { color: #58e6a8; border-color: #58e6a8; }
+  #galleryBar .gb.done { color: #58e6a8; border-color: rgba(88,230,168,.6); }
+  @media (max-width: 520px) { #galleryBar { left: 10px; bottom: 10px; } }
+</style>
+<script>
+  (function () {
+    var DEMO = 'spotlight-reveal', TITLE = '聚光灯';
+    var origin = location.protocol.startsWith('http') ? location.origin : 'https://gsap.leolee0812.site';
+    var text = '参考这个页面：' + origin + '/demos/' + DEMO + '.html\n' +
+      '它用 GSAP 3.13 实现了「' + TITLE + '」，源码里有完整可运行的实现和中文注释。\n' +
+      '请先读取这个链接，弄清它的实现方式（用到哪些插件、时间轴怎么排、缓动怎么选），\n' +
+      '然后把同样的效果复刻到我的项目里：沿用我现有的页面结构和配色，保持一致的节奏和手感。';
+    var btn = document.getElementById('gbCopy');
+    btn.addEventListener('click', function () {
+      var done = function () {
+        btn.textContent = '✓ 已复制，粘给你的 Agent';
+        btn.classList.add('done');
+        clearTimeout(btn._t);
+        btn._t = setTimeout(function () {
+          btn.textContent = '⧉ 复制给 AI';
+          btn.classList.remove('done');
+        }, 2200);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, done);
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+        done();
+      }
+    });
+  })();
+</script>
+</body>
+</html>
